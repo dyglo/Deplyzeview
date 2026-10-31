@@ -1,25 +1,25 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { registerChartType, registerRendererLayer, type RendererLayerArgs, type SeriesDataEngine, type SeriesDataEngineHost } from '@luxalgo/vela/plugin';
+import { formatVolume } from './volume-utils.mjs';
 
 type Level = { bid: number; ask: number; bidQuote: number; askQuote: number };
 type BarFootprint = { time: number; levels: Record<string, Level> };
 type FootprintData = { bars: BarFootprint[]; step: number; ticksPerRow: number };
 export type FootprintMode = 'split' | 'delta' | 'total';
-export type FootprintUnit = 'usd' | 'coin';
+export type FootprintUnit = 'quote' | 'coin';
 export type TradeVenue = 'binance' | 'coinbase' | 'hyperliquid';
 export type FeedHealth = { venue: string; instrument: string; status: string; lastMessageMs?: number | null; coverageStartMs?: number | null; coverageEndMs?: number | null; tradesStored: number; gapsDetected: number; gapDetectionAvailable: boolean; quoteCurrency?: string; historyNote: string; lastError?: string | null };
 export type FootprintHistory = { venue: string; instrument: string; bars: Array<{ time: number; levels: Array<Level & { price: number }> }>; step: number; ticksPerRow: number; coverageStartMs?: number | null; coverageEndMs?: number | null; trades: number; sourceEventIds: string[]; gapsDetected: number; historyNote: string; quoteCurrency: string };
 type BucketUpdate = { venue: string; instrument: string; barTime: number; price: number; bid: number; ask: number; bidQuote: number; askQuote: number; sourceEventId: string };
 
 let mode: FootprintMode = 'split';
-let unit: FootprintUnit = 'usd';
+let unit: FootprintUnit = 'quote';
 let ticksPerRow = 15;
 let activeVenue: TradeVenue = 'binance';
 let healthSink: ((health: FeedHealth) => void) | undefined;
 const activeRestarts = new Set<() => void>();
 const activePainters = new Set<() => void>();
-const formatQty = (value: number) => value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : value >= 10_000 ? `${Math.round(value / 1000)}K` : value >= 1_000 ? `${(value / 1000).toFixed(1)}K` : `${Math.round(value)}`;
 
 export function setFootprintMode(next: FootprintMode) { mode = next; for (const repaint of activePainters) repaint(); }
 export function setFootprintUnit(next: FootprintUnit) { unit = next; for (const repaint of activePainters) repaint(); }
@@ -160,7 +160,7 @@ registerRendererLayer({
           context.fillStyle = '#8c8f98'; context.font = '10px Inter, sans-serif'; context.fillText((window as any).__TAURI_INTERNALS__ ? 'Waiting for Rust market-data service…' : 'Open the desktop app to start the Rust market-data service.', 18, 24); return;
         }
         const byTime = new Map<number, BarFootprint>(payload.bars.map((bar): [number, BarFootprint] => [bar.time, bar]));
-        const maxTotal = Math.max(1, ...payload.bars.flatMap((bar) => Object.entries(bar.levels).map(([price, value]) => unit === 'usd' ? value.bidQuote + value.askQuote : value.bid + value.ask)));
+        const maxTotal = Math.max(1, ...payload.bars.flatMap((bar) => Object.entries(bar.levels).map(([price, value]) => unit === 'quote' ? value.bidQuote + value.askQuote : value.bid + value.ask)));
         const step = payload.step || 0.01;
         const interval = args.coords.barInterval;
         const visible: Array<{ x: number; width: number; levels: Array<[number, Level]> }> = [];
@@ -180,19 +180,19 @@ registerRendererLayer({
             const cellTop = Math.max(args.bounds.top, Math.min(top, bottom));
             const cellHeight = Math.max(10, Math.min(args.bounds.height, Math.abs(bottom - top)));
             if (cellTop + cellHeight < args.bounds.top || cellTop > args.bounds.top + args.bounds.height) continue;
-            const bid = unit === 'usd' ? value.bidQuote : value.bid;
-            const ask = unit === 'usd' ? value.askQuote : value.ask;
+            const bid = unit === 'quote' ? value.bidQuote : value.bid;
+            const ask = unit === 'quote' ? value.askQuote : value.ask;
             const total = bid + ask;
             if (mode === 'split') {
               context.fillStyle = `rgba(119,127,137,${0.2 + Math.min(0.65, bid / maxTotal * 1.2)})`; context.fillRect(candle.x, cellTop, half - 1, cellHeight - 1);
               context.fillStyle = `rgba(177,100,79,${0.2 + Math.min(0.65, ask / maxTotal * 1.2)})`; context.fillRect(candle.x + half, cellTop, half - 1, cellHeight - 1);
-              if (cellHeight >= 12 && half >= 22) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatQty(bid), candle.x + half / 2, cellTop + cellHeight / 2); context.fillText(formatQty(ask), candle.x + half + half / 2, cellTop + cellHeight / 2); }
+              if (cellHeight >= 12 && half >= 22) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(bid), candle.x + half / 2, cellTop + cellHeight / 2); context.fillText(formatVolume(ask), candle.x + half + half / 2, cellTop + cellHeight / 2); }
             } else if (mode === 'delta') {
               const delta = ask - bid; context.fillStyle = delta >= 0 ? `rgba(188,104,82,${0.22 + Math.abs(delta) / Math.max(1,total) * 0.68})` : `rgba(104,128,145,${0.22 + Math.abs(delta) / Math.max(1,total) * 0.68})`; context.fillRect(candle.x, cellTop, candle.width - 1, cellHeight - 1);
-              if (cellHeight >= 12 && candle.width >= 23) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatQty(Math.abs(delta)), candle.x + candle.width / 2, cellTop + cellHeight / 2); }
+              if (cellHeight >= 12 && candle.width >= 23) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(delta), candle.x + candle.width / 2, cellTop + cellHeight / 2); }
             } else {
               context.fillStyle = `rgba(153,158,164,${0.15 + Math.min(1,total / maxTotal) * 0.68})`; context.fillRect(candle.x, cellTop, candle.width - 1, cellHeight - 1);
-              if (cellHeight >= 12 && candle.width >= 23) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatQty(total), candle.x + candle.width / 2, cellTop + cellHeight / 2); }
+              if (cellHeight >= 12 && candle.width >= 23) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(total), candle.x + candle.width / 2, cellTop + cellHeight / 2); }
             }
           }
         }

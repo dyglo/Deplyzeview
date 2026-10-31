@@ -101,7 +101,7 @@ pub struct MarketBar {
     pub high: f64,
     pub low: f64,
     pub close: f64,
-    pub volume: f64,
+    pub volume: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -606,9 +606,12 @@ fn calculate_footprint_bucket(
     config: &FeedConfig,
     row_ticks: u32,
 ) -> (i64, i64, FootprintLevel) {
-    let row_step = (config.tick_size * row_ticks.max(1) as f64).max(f64::EPSILON);
-    let row_index = (trade.price / row_step).round() as i64;
-    let price = row_index as f64 * row_step;
+    let tick_size = config.tick_size.max(f64::EPSILON);
+    let ticks_per_row = row_ticks.max(1) as i64;
+    let row_step = tick_size * ticks_per_row as f64;
+    let price_tick = (trade.price / tick_size).round() as i64;
+    let row_index = price_tick.div_euclid(ticks_per_row);
+    let price = row_index as f64 * row_step + row_step / 2.0;
     let interval = config.interval_ms.max(1);
     let bar_time = trade.timestamp_ms.div_euclid(interval) * interval;
     let quote = trade.price * trade.size * trade.contract_multiplier;
@@ -819,7 +822,10 @@ pub async fn get_market_bars(
                             high: number(2),
                             low: number(3),
                             close: number(4),
-                            volume: number(5),
+                            volume: values[5]
+                                .as_str()
+                                .and_then(|v| v.parse::<f64>().ok())
+                                .filter(|v| v.is_finite() && *v >= 0.0),
                         });
                     }
                 }
@@ -861,7 +867,10 @@ pub async fn get_market_bars(
                                 high: n(2),
                                 open: n(3),
                                 close: n(4),
-                                volume: n(5),
+                                volume: v[5]
+                                    .as_f64()
+                                    .or_else(|| v[5].as_str().and_then(|s| s.parse().ok()))
+                                    .filter(|volume: &f64| volume.is_finite() && *volume >= 0.0),
                             });
                         }
                     }
@@ -889,7 +898,10 @@ pub async fn get_market_bars(
                     high: n("h"),
                     low: n("l"),
                     close: n("c"),
-                    volume: n("v"),
+                    volume: row["v"]
+                        .as_str()
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .filter(|v| v.is_finite() && *v >= 0.0),
                 });
             }
         }
@@ -910,7 +922,10 @@ fn aggregate_market_bars(input: Vec<MarketBar>, interval_ms: i64) -> Vec<MarketB
                 agg.high = agg.high.max(bar.high);
                 agg.low = agg.low.min(bar.low);
                 agg.close = bar.close;
-                agg.volume += bar.volume;
+                agg.volume = match (agg.volume, bar.volume) {
+                    (Some(known), Some(next)) => Some(known + next),
+                    _ => None,
+                };
             })
             .or_insert(MarketBar { time: key, ..bar });
     }
@@ -1200,7 +1215,7 @@ mod tests {
             venue: "binance".into(),
             instrument: "BTCUSDT".into(),
             timestamp_ms: 61_234,
-            price: 100.2,
+            price: 100.5,
             size: 2.0,
             aggressor_side: "buy".into(),
             source_event_id: "1".into(),
@@ -1212,16 +1227,16 @@ mod tests {
         let (bar, index, level) = calculate_footprint_bucket(&buyer, &config, 2);
         assert_eq!(bar, 60_000);
         assert_eq!(index, 100);
-        assert_eq!(level.price, 100.0);
+        assert_eq!(level.price, 100.5);
         assert_eq!(level.ask, 2.0);
         assert_eq!(level.bid, 0.0);
-        assert!((level.ask_quote - 200.4).abs() < 1e-9);
+        assert!((level.ask_quote - 201.0).abs() < 1e-9);
         let mut seller = buyer.clone();
         seller.aggressor_side = "sell".into();
         let (_, _, level) = calculate_footprint_bucket(&seller, &config, 2);
         assert_eq!(level.bid, 2.0);
         assert_eq!(level.ask, 0.0);
-        assert!((level.bid_quote - 200.4).abs() < 1e-9);
+        assert!((level.bid_quote - 201.0).abs() < 1e-9);
     }
     #[test]
     fn duplicate_source_events_are_stored_only_once() {
@@ -1261,7 +1276,7 @@ mod tests {
                 high: 12.0,
                 low: 9.0,
                 close: 11.0,
-                volume: 2.0,
+                volume: Some(2.0),
             },
             MarketBar {
                 time: 3_600_000,
@@ -1269,7 +1284,7 @@ mod tests {
                 high: 15.0,
                 low: 10.0,
                 close: 14.0,
-                volume: 3.0,
+                volume: Some(3.0),
             },
             MarketBar {
                 time: 7_200_000,
@@ -1277,7 +1292,7 @@ mod tests {
                 high: 14.5,
                 low: 8.0,
                 close: 9.0,
-                volume: 4.0,
+                volume: Some(4.0),
             },
         ];
         let result = aggregate_market_bars(input, 14_400_000);
@@ -1286,6 +1301,72 @@ mod tests {
         assert_eq!(result[0].close, 9.0);
         assert_eq!(result[0].high, 15.0);
         assert_eq!(result[0].low, 8.0);
-        assert_eq!(result[0].volume, 9.0);
+        assert_eq!(result[0].volume, Some(9.0));
+    }
+
+    #[test]
+    fn footprint_rows_group_valid_ticks_on_floor_aligned_boundaries() {
+        let config = FeedConfig {
+            venue: "binance".into(),
+            instrument: "BTCUSDT".into(),
+            tick_size: 0.5,
+            row_ticks: 2,
+            interval_ms: 60_000,
+            contract_type: "spot".into(),
+            multiplier: 1.0,
+            quote_currency: "USDT".into(),
+            history_note: String::new(),
+            gap_detection_available: true,
+        };
+        let trade_at = |price| NormalizedTrade {
+            venue: "binance".into(),
+            instrument: "BTCUSDT".into(),
+            timestamp_ms: 1_000,
+            price,
+            size: 1.0,
+            aggressor_side: "buy".into(),
+            source_event_id: format!("{price}"),
+            contract_type: "spot".into(),
+            contract_multiplier: 1.0,
+            quote_currency: "USDT".into(),
+            raw_event: Value::Null,
+        };
+        let (first_bar, first_row, first) =
+            calculate_footprint_bucket(&trade_at(100.0), &config, 2);
+        let (same_bar, same_row, same) = calculate_footprint_bucket(&trade_at(100.5), &config, 2);
+        let (next_bar, next_row, next) = calculate_footprint_bucket(&trade_at(101.0), &config, 2);
+
+        assert_eq!(first_bar, same_bar);
+        assert_eq!(first_row, same_row);
+        assert_eq!(first.price, 100.5);
+        assert_eq!(same.price, 100.5);
+        assert_eq!(next_bar, same_bar);
+        assert_ne!(next_row, same_row);
+        assert_eq!(next.price, 101.5);
+    }
+
+    #[test]
+    fn candle_resampling_marks_total_volume_unknown_if_a_source_candle_is_missing_it() {
+        let input = vec![
+            MarketBar {
+                time: 0,
+                open: 10.0,
+                high: 12.0,
+                low: 9.0,
+                close: 11.0,
+                volume: Some(2.0),
+            },
+            MarketBar {
+                time: 3_600_000,
+                open: 11.0,
+                high: 15.0,
+                low: 10.0,
+                close: 14.0,
+                volume: None,
+            },
+        ];
+        let result = aggregate_market_bars(input, 14_400_000);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].volume, None);
     }
 }
