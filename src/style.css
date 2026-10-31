@@ -8,3 +8,4 @@
 
 .drawing-toolbar>button:disabled,.toolbar-bottom button:disabled{opacity:.35;cursor:not-allowed}
 .settings-dialog{margin:0;padding:0;max-width:none}
+.dialog-titlebar{cursor:grab;touch-action:none}.dialog-titlebar:active{cursor:grabbing}.dialog-titlebar button{cursor:pointer}

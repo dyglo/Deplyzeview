@@ -17,6 +17,8 @@
   let marketMenuOpen = false;
   let styleMenuOpen = false;
   let settingsOpen = false;
+  let settingsDialogPosition: { left: number; top: number } | undefined;
+  let settingsDialogDrag: { pointerId: number; startX: number; startY: number; left: number; top: number; dialog: HTMLDialogElement; container: HTMLElement } | undefined;
   let settingsTab = 'General';
   let toolActive = 'crosshair';
   let positionButton: 'long' | 'short' = 'long';
@@ -94,6 +96,55 @@
   function chooseMode(next: FootprintMode) { footprintMode = next; setFootprintMode(next); }
   function chooseUnit(next: FootprintUnit) { footprintUnit = next; setFootprintUnit(next); }
   function changeTicks(value: number) { tickCount = Math.max(1, Math.min(100, value || 1)); setFootprintTicks(tickCount); }
+  function startSettingsDialogDrag(event: PointerEvent) {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+    const titlebar = event.currentTarget as HTMLElement;
+    const dialog = titlebar.closest('dialog');
+    const container = dialog?.parentElement;
+    if (!dialog || !container) return;
+    const dialogRect = dialog.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const left = dialogRect.left - containerRect.left;
+    const top = dialogRect.top - containerRect.top;
+    settingsDialogPosition = { left, top };
+    settingsDialogDrag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left, top, dialog, container };
+    titlebar.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+  function moveSettingsDialog(event: PointerEvent) {
+    const drag = settingsDialogDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const containerRect = drag.container.getBoundingClientRect();
+    const dialogRect = drag.dialog.getBoundingClientRect();
+    const maxLeft = Math.max(0, containerRect.width - dialogRect.width);
+    const maxTop = Math.max(0, containerRect.height - dialogRect.height);
+    settingsDialogPosition = {
+      left: Math.max(0, Math.min(maxLeft, drag.left + event.clientX - drag.startX)),
+      top: Math.max(0, Math.min(maxTop, drag.top + event.clientY - drag.startY)),
+    };
+  }
+  function endSettingsDialogDrag(event: PointerEvent) {
+    if (settingsDialogDrag?.pointerId !== event.pointerId) return;
+    settingsDialogDrag = undefined;
+  }
+  function nudgeSettingsDialog(event: KeyboardEvent) {
+    if ((event.target as HTMLElement).closest('button')) return;
+    const offsets: Record<string, [number, number]> = { ArrowUp: [0, -12], ArrowDown: [0, 12], ArrowLeft: [-12, 0], ArrowRight: [12, 0] };
+    const offset = offsets[event.key];
+    if (!offset) return;
+    const titlebar = event.currentTarget as HTMLElement;
+    const dialog = titlebar.closest('dialog');
+    const container = dialog?.parentElement;
+    if (!dialog || !container) return;
+    event.preventDefault();
+    const dialogRect = dialog.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const current = settingsDialogPosition ?? { left: dialogRect.left - containerRect.left, top: dialogRect.top - containerRect.top };
+    settingsDialogPosition = {
+      left: Math.max(0, Math.min(Math.max(0, containerRect.width - dialogRect.width), current.left + offset[0])),
+      top: Math.max(0, Math.min(Math.max(0, containerRect.height - dialogRect.height), current.top + offset[1])),
+    };
+  }
   function toolbarIdForTool(type: DrawingTypeKey | null): string {
     if (!type) return 'crosshair';
     if (type === 'position') return positionButton;
@@ -176,7 +227,7 @@
   </nav>
   <main class="chart-layout"><aside class="drawing-toolbar" aria-label="Drawing tools">{#each tools as tool, index}{#if index === 1 || index === 4 || index === 6 || index === 8 || index === 10 || index === 12}<div class="tool-divider"></div>{/if}<button class:active-tool={toolActive === tool.id || (tool.id === 'visibility' && !selectedDrawingsVisible) || (tool.id === 'lock' && selectedDrawingsLocked)} disabled={(tool.id === 'visibility' || tool.id === 'lock') && selectedDrawingIds.length === 0} aria-pressed={toolActive === tool.id || (tool.id === 'visibility' && !selectedDrawingsVisible) || (tool.id === 'lock' && selectedDrawingsLocked)} aria-label={tool.title} title={tool.title} onclick={() => selectDrawingTool(tool.id)}><svelte:component this={tool.icon} size={14} strokeWidth={1.55}/></button>{/each}<div class="toolbar-bottom"><button aria-label="Undo drawing" title="Undo drawing" disabled={!canUndoDrawings} onclick={undoDrawing}><Undo2 size={14}/></button><button aria-label="Redo drawing" title="Redo drawing" disabled={!canRedoDrawings} onclick={redoDrawing}><Undo2 size={14} class="redo-icon"/></button></div></aside>
     <section class="chart-area"><div class="chart-legend"><div class="legend-main"><span class="pair-name">{symbol}</span><span class="last-price">{chartStyle === 'footprint' ? 'Volume Footprint' : 'Live market data'}</span><span class="price-delta">{chartStyle === 'footprint' ? `· ${venue}` : ''}</span></div><div class="legend-sub">{chartStyle === 'footprint' ? `Bid × Ask · ${venue} trade feed` : venue}</div></div><div bind:this={chartHost} class="vela-chart" aria-label="Live Vela market chart"></div><div class="chart-watermark" aria-label="Vela attribution">V</div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button>
-      {#if settingsOpen}<div class="settings-scrim" role="presentation" onclick={() => settingsOpen = false}></div><dialog open class="settings-dialog" aria-modal="true" aria-labelledby="settings-title"><header class="dialog-titlebar"><div><span class="dialog-kicker">CHART SETTINGS</span><h2 id="settings-title">Volume Footprint</h2></div><button class="dialog-close" aria-label="Close settings" onclick={() => settingsOpen = false}><X size={14}/></button></header><nav class="dialog-tabs">{#each tabs as tab}<button class:tab-active={settingsTab === tab} onclick={() => settingsTab = tab}>{tab}</button>{/each}</nav><div class="dialog-content"><div class="dialog-section-label">{settingsTab === 'General' ? 'GENERAL' : settingsTab.toUpperCase()}</div>{#if settingsTab === 'General'}<div class="setting-row"><div class="setting-name"><strong>Unit</strong><small>Volume denomination</small></div><div class="segmented"><button class:segment-active={footprintUnit === 'quote'} onclick={() => chooseUnit('quote')}>{feedHealth?.quoteCurrency ?? 'Quote'}</button><button class:segment-active={footprintUnit === 'coin'} onclick={() => chooseUnit('coin')}>Coin</button></div></div><div class="setting-row"><div class="setting-name"><strong>Ticks per bar</strong><small>Price levels per footprint row</small></div><div class="stepper"><button aria-label="Decrease ticks" onclick={() => changeTicks(tickCount - 1)}>−</button><input type="number" min="1" max="100" bind:value={tickCount} oninput={() => changeTicks(tickCount)}/><span>ticks</span><button aria-label="Increase ticks" onclick={() => changeTicks(tickCount + 1)}>+</button></div></div><div class="setting-row mode-row"><div class="setting-name"><strong>Display mode</strong><small>How trade volume is rendered</small></div><div class="mode-options">{#each modes as item}<button class:mode-active={footprintMode === item.id} onclick={() => chooseMode(item.id)}><span>{item.name}</span><small>{item.hint}</small>{#if footprintMode === item.id}<span class="selected-dot"></span>{/if}</button>{/each}</div></div><div class="data-note"><span class="live-indicator" class:health-error={feedHealth?.status === 'error' || (feedHealth?.gapsDetected ?? 0) > 0}></span><span><strong>{feedHealth?.status === 'live' ? 'Live trade feed' : feedHealth?.status === 'error' ? 'Feed needs attention' : 'Market data service'}</strong><small>{feedHealth ? `${feedHealth.tradesStored.toLocaleString()} stored trades · ${feedHealth.gapDetectionAvailable ? `${feedHealth.gapsDetected} gap(s)` : 'gap detection unavailable'}` : 'Waiting for Rust feed status…'}</small><small>{coverageText()}</small><small>{feedHealth?.historyNote ?? `${venue} public trade history`}</small>{#if feedHealth?.lastError}<small class="feed-error-text">{feedHealth.lastError}</small>{/if}</span></div>{:else}<div class="settings-placeholder"><div class="settings-placeholder-icon"><Settings2 size={17}/></div><strong>{settingsTab} settings</strong><span>Configure {settingsTab.toLowerCase()} visualization for the footprint chart.</span><div class="coming-chip">AVAILABLE IN THIS BUILD</div></div>{/if}</div><footer class="dialog-footer"><span class="footer-hint">Settings apply to the active chart</span><button class="done-button" onclick={() => settingsOpen = false}>Done</button></footer></dialog>{/if}
+      {#if settingsOpen}<div class="settings-scrim" role="presentation" onclick={() => settingsOpen = false}></div><dialog open class="settings-dialog" aria-modal="true" aria-labelledby="settings-title" style={settingsDialogPosition ? `left:${settingsDialogPosition.left}px;top:${settingsDialogPosition.top}px;transform:none` : undefined}><header class="dialog-titlebar" role="toolbar" aria-label="Move settings dialog" tabindex="0" onkeydown={nudgeSettingsDialog} onpointerdown={startSettingsDialogDrag} onpointermove={moveSettingsDialog} onpointerup={endSettingsDialogDrag} onpointercancel={endSettingsDialogDrag}><div><span class="dialog-kicker">CHART SETTINGS</span><h2 id="settings-title">Volume Footprint</h2></div><button class="dialog-close" aria-label="Close settings" onclick={() => settingsOpen = false}><X size={14}/></button></header><nav class="dialog-tabs">{#each tabs as tab}<button class:tab-active={settingsTab === tab} onclick={() => settingsTab = tab}>{tab}</button>{/each}</nav><div class="dialog-content"><div class="dialog-section-label">{settingsTab === 'General' ? 'GENERAL' : settingsTab.toUpperCase()}</div>{#if settingsTab === 'General'}<div class="setting-row"><div class="setting-name"><strong>Unit</strong><small>Volume denomination</small></div><div class="segmented"><button class:segment-active={footprintUnit === 'quote'} onclick={() => chooseUnit('quote')}>{feedHealth?.quoteCurrency ?? 'Quote'}</button><button class:segment-active={footprintUnit === 'coin'} onclick={() => chooseUnit('coin')}>Coin</button></div></div><div class="setting-row"><div class="setting-name"><strong>Ticks per bar</strong><small>Price levels per footprint row</small></div><div class="stepper"><button aria-label="Decrease ticks" onclick={() => changeTicks(tickCount - 1)}>−</button><input type="number" min="1" max="100" bind:value={tickCount} oninput={() => changeTicks(tickCount)}/><span>ticks</span><button aria-label="Increase ticks" onclick={() => changeTicks(tickCount + 1)}>+</button></div></div><div class="setting-row mode-row"><div class="setting-name"><strong>Display mode</strong><small>How trade volume is rendered</small></div><div class="mode-options">{#each modes as item}<button class:mode-active={footprintMode === item.id} onclick={() => chooseMode(item.id)}><span>{item.name}</span><small>{item.hint}</small>{#if footprintMode === item.id}<span class="selected-dot"></span>{/if}</button>{/each}</div></div><div class="data-note"><span class="live-indicator" class:health-error={feedHealth?.status === 'error' || (feedHealth?.gapsDetected ?? 0) > 0}></span><span><strong>{feedHealth?.status === 'live' ? 'Live trade feed' : feedHealth?.status === 'error' ? 'Feed needs attention' : 'Market data service'}</strong><small>{feedHealth ? `${feedHealth.tradesStored.toLocaleString()} stored trades · ${feedHealth.gapDetectionAvailable ? `${feedHealth.gapsDetected} gap(s)` : 'gap detection unavailable'}` : 'Waiting for Rust feed status…'}</small><small>{coverageText()}</small><small>{feedHealth?.historyNote ?? `${venue} public trade history`}</small>{#if feedHealth?.lastError}<small class="feed-error-text">{feedHealth.lastError}</small>{/if}</span></div>{:else}<div class="settings-placeholder"><div class="settings-placeholder-icon"><Settings2 size={17}/></div><strong>{settingsTab} settings</strong><span>Configure {settingsTab.toLowerCase()} visualization for the footprint chart.</span><div class="coming-chip">AVAILABLE IN THIS BUILD</div></div>{/if}</div><footer class="dialog-footer"><span class="footer-hint">Settings apply to the active chart</span><button class="done-button" onclick={() => settingsOpen = false}>Done</button></footer></dialog>{/if}
     </section>
   </main>
   <footer class="statusbar"><div class="range-options"><button onclick={() => vela?.setVisibleRangePreset('1D')}>1D</button><button onclick={() => vela?.setVisibleRangePreset('1W')}>1W</button><button onclick={() => vela?.setVisibleRangePreset('1M')}>1M</button><button onclick={() => vela?.setVisibleRangePreset('3M')}>3M</button><button onclick={() => vela?.setVisibleRangePreset('6M')}>6M</button><button onclick={() => vela?.setVisibleRangePreset('1Y')}>1Y</button><button onclick={() => vela?.setVisibleRangePreset('ALL')}>ALL</button><span class="status-divider"></span><button class="calendar-button"><BarChart3 size={12}/></button></div><div class="connection"><span class:connected={status.startsWith('Live')} class="connection-dot"></span>{status}</div><div class="clock">{clock.toLocaleTimeString('en-US', { hour12: false, timeZone: 'UTC' })} UTC</div><button class="fit-button"><Maximize2 size={12}/> Fit</button><button class="help-button"><CircleHelp size={13}/></button></footer>
