@@ -1,15 +1,15 @@
 # DeplyzeView Render deployment plan
 
-Status: local implementation and provider acceptance passed. On 1 November 2026 the user approved committing, pushing and deploying to a new Render service on the Free compute plan. Production verification is recorded below after deployment.
+Status: deployed and live on 1 November 2026 using the connected Render plugin. The user approved commit, push and Free-plan deployment. Source commit: `ebb750b4b5a23d3401ea435096c119396d9d44fb`, branch `codex/multi-asset-market-data`.
 
 The user reviewed the visible provider/instrument browser and approved publication. The existing venue and symbol popovers include provider directory browsing. The current development launcher starts/reuses the loopback gateway automatically.
 
-## New service only
+## Deployed service
 
-| Setting | Proposed value |
+| Setting | Deployed value |
 |---|---|
 | Workspace | User-confirmed My Workspace, `tea-d0s3v7idbo4c73bbgve0` |
-| Name | `deplyzeview-market-data` (availability checked at creation) |
+| Name | `deplyzeview-market-data`, ID `srv-dbjnin3bc2fs73dc0mu0` |
 | Type | Web Service on the Free compute plan; may spin down after 15 idle minutes |
 | Compute plan | `free`, 0.1 CPU / 512 MB; no paid compute plan, per explicit user instruction |
 | Region | Frankfurt, to keep the standalone gateway geographically closer to Nairobi; no private-network dependencies |
@@ -23,7 +23,7 @@ The user reviewed the visible provider/instrument browser and approved publicati
 | Auto-deploy | Off for deliberate releases |
 | Storage | None; no database or disk needed |
 | Platform readiness | Default TCP probe. The connected creation tool cannot set an HTTP health path. `/v1/health` remains authenticated and is checked explicitly after deploy. |
-| Production URL | Not allocated yet; do not treat a predicted `onrender.com` hostname as deployed |
+| Production URL | [https://deplyzeview-market-data.onrender.com](https://deplyzeview-market-data.onrender.com) |
 
 The existing TafTube service (`srv-d0s4uc95pdvs73978el0`) was inspected read-only and is outside scope. No existing service, deployment, region, environment variable or workspace setting is to be changed.
 
@@ -42,7 +42,7 @@ Do not send the desktop's `DEPLYZEVIEW_APP_TOKEN` or `DEPLYZEVIEW_GATEWAY_URL` a
 
 Managed application-token provisioning is supported via OS environment or per-user `gateway.json`. Automatic consumer enrollment/sign-in is not implemented. Publicly distributing an installer with an embedded shared token is not acceptable.
 
-## Required deployment verification
+## Deployment verification checklist
 
 1. Complete local unit, frontend, Rust, provider, stream and secret checks before creating any service.
 2. User permission to commit/push was received; commit and push the reviewed changes. Exclude `.env` and build outputs; audit the candidate commit for actual secret values without printing them.
@@ -72,3 +72,21 @@ Managed application-token provisioning is supported via OS environment or per-us
 ## Free plan limitation
 
 The user explicitly selected Free instead of always-on paid compute. Render can spin down an idle Free service after 15 minutes; a cold start can take about a minute, existing streams can disconnect, and shared monthly Free instance hours apply. This deployment therefore does not claim always-on availability. No keep-alive workaround is configured. Metals/CFD entitlement expansion is deferred at the user's request.
+
+## Production verification — 1 November 2026
+
+- Deploy `dep-dbjninrbc2fs73dc0p5g` reached `live` at 20:40:15 East Africa Time (17:40:15 UTC).
+- Authenticated HTTPS `/v1/health`: HTTP 200, OANDA/Narwhal/FinzData all `ok`. Unauthenticated instrument request: HTTP 401.
+- Production acceptance: OANDA EUR_USD H1 and M15 returned ten candles each; pricing SSE returned HTTP 200 and an actual quote. Narwhal GC daily history and a delayed latest quote passed. FinzData ES.ESZ26 daily history with volume/open interest passed.
+- New-service log scan against actual credential values found no matches. Only the new service's logs were read; TafTube was not changed.
+- Provider credentials are in the new Render service's environment, not in source or the desktop bundle. Auto-deploy is disabled. The user-selected Free plan is confirmed by the service configuration.
+- The desktop public build URL is set to this production service. This Windows user has a per-user `gateway.json` containing only the public URL and an application access token; no provider keys were copied. Other PCs require separate application authorization provisioning. No shared token is embedded in the installer.
+- Production MSI and NSIS installers rebuilt successfully. The standalone release executable (Tauri origin `http://tauri.localhost/`, without a dev server or local gateway) discovered OANDA instruments and rendered EUR_USD candles from the Render backend through Rust. The executable contains the public production URL. Actual credential-value scans across 52 source/frontend/executable/installer files found no matches. A separate fresh-PC installation was not available in this environment.
+
+Dashboard: https://dashboard.render.com/web/srv-dbjnin3bc2fs73dc0mu0
+
+## Installer artifacts
+
+- Recommended Windows setup: `src-tauri/target/release/bundle/nsis/DeplyzeView_0.1.0_x64-setup.exe`
+- MSI: `src-tauri/target/release/bundle/msi/DeplyzeView_0.1.0_x64_en-US.msi`
+- Both embed only the public production gateway URL. Application access is provisioned for this Windows user separately; another PC needs its own application authorization, never provider API keys. These are local build files, not public GitHub release downloads.
