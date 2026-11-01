@@ -174,7 +174,7 @@ pub fn initialize_database(connection: &Connection) -> Result<(), String> {
            PRIMARY KEY (venue, instrument)
          );"
     ).map_err(|e| e.to_string())?;
-    // Safe additive migration for databases created by earlier Vela Terminal builds.
+    // Safe additive migration for databases created by earlier desktop builds.
     let _ = connection.execute(
         "ALTER TABLE feed_health ADD COLUMN quote_currency TEXT NOT NULL DEFAULT 'USD'",
         [],
@@ -661,7 +661,7 @@ async fn run_feed(
 ) {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("VelaTerminal/0.1 market-data")
+        .user_agent("DeplyzeView/0.1 market-data")
         .build()
         .unwrap_or_default();
     let mut last_numeric_id: Option<u64> = None;
@@ -795,7 +795,7 @@ pub async fn get_market_bars(
     let (venue, instrument) = validate_market(&venue, &instrument)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("VelaTerminal/0.1 market-data")
+        .user_agent("DeplyzeView/0.1 market-data")
         .build()
         .map_err(|e| e.to_string())?;
     let (provider_tf, interval_ms) = provider_interval(&venue, &timeframe);
@@ -944,7 +944,7 @@ pub async fn subscribe_market_feed(
     let (venue, instrument) = validate_market(&venue, &instrument)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
-        .user_agent("VelaTerminal/0.1 market-data")
+        .user_agent("DeplyzeView/0.1 market-data")
         .build()
         .map_err(|e| e.to_string())?;
     let tick_size = tick_size_for(&client, &venue, &instrument).await?;

@@ -157,7 +157,7 @@ registerRendererLayer({
         if (args.priceStyle !== 'footprint') return;
         const payload = args.data as FootprintData | undefined;
         if (!payload?.bars.length || !args.bars.length) {
-          context.fillStyle = '#8c8f98'; context.font = '10px Inter, sans-serif'; context.fillText((window as any).__TAURI_INTERNALS__ ? 'Waiting for Rust market-data service…' : 'Open the desktop app to start the Rust market-data service.', 18, 24); return;
+          context.fillStyle = args.theme.textColor; context.font = '10px Inter, sans-serif'; context.fillText((window as any).__TAURI_INTERNALS__ ? 'Waiting for Rust market-data service…' : 'Open the desktop app to start the Rust market-data service.', 18, 24); return;
         }
         const byTime = new Map<number, BarFootprint>(payload.bars.map((bar): [number, BarFootprint] => [bar.time, bar]));
         const maxTotal = Math.max(1, ...payload.bars.flatMap((bar) => Object.entries(bar.levels).map(([price, value]) => unit === 'quote' ? value.bidQuote + value.askQuote : value.bid + value.ask)));
@@ -186,13 +186,13 @@ registerRendererLayer({
             if (mode === 'split') {
               context.fillStyle = `rgba(119,127,137,${0.2 + Math.min(0.65, bid / maxTotal * 1.2)})`; context.fillRect(candle.x, cellTop, half - 1, cellHeight - 1);
               context.fillStyle = `rgba(177,100,79,${0.2 + Math.min(0.65, ask / maxTotal * 1.2)})`; context.fillRect(candle.x + half, cellTop, half - 1, cellHeight - 1);
-              if (cellHeight >= 12 && half >= 22) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(bid), candle.x + half / 2, cellTop + cellHeight / 2); context.fillText(formatVolume(ask), candle.x + half + half / 2, cellTop + cellHeight / 2); }
+              if (cellHeight >= 12 && half >= 22) { context.fillStyle = args.theme.textColor; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(bid), candle.x + half / 2, cellTop + cellHeight / 2); context.fillText(formatVolume(ask), candle.x + half + half / 2, cellTop + cellHeight / 2); }
             } else if (mode === 'delta') {
               const delta = ask - bid; context.fillStyle = delta >= 0 ? `rgba(188,104,82,${0.22 + Math.abs(delta) / Math.max(1,total) * 0.68})` : `rgba(104,128,145,${0.22 + Math.abs(delta) / Math.max(1,total) * 0.68})`; context.fillRect(candle.x, cellTop, candle.width - 1, cellHeight - 1);
-              if (cellHeight >= 12 && candle.width >= 23) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(delta), candle.x + candle.width / 2, cellTop + cellHeight / 2); }
+              if (cellHeight >= 12 && candle.width >= 23) { context.fillStyle = args.theme.textColor; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(delta), candle.x + candle.width / 2, cellTop + cellHeight / 2); }
             } else {
               context.fillStyle = `rgba(153,158,164,${0.15 + Math.min(1,total / maxTotal) * 0.68})`; context.fillRect(candle.x, cellTop, candle.width - 1, cellHeight - 1);
-              if (cellHeight >= 12 && candle.width >= 23) { context.fillStyle = '#e1e2e5'; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(total), candle.x + candle.width / 2, cellTop + cellHeight / 2); }
+              if (cellHeight >= 12 && candle.width >= 23) { context.fillStyle = args.theme.textColor; context.font = '9px "Roboto Mono",monospace'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(formatVolume(total), candle.x + candle.width / 2, cellTop + cellHeight / 2); }
             }
           }
         }

@@ -1,12 +1,12 @@
 [package]
-name = "vela-desktop"
+name = "deplyzeview"
 version = "0.1.0"
-description = "A focused desktop trading chart powered by Vela"
+description = "DeplyzeView desktop trading terminal"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "vela_desktop_lib"
+name = "deplyzeview_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

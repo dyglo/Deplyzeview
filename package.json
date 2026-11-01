@@ -1,13 +1,13 @@
 {
-  "name": "vela-desktop-terminal",
+  "name": "deplyzeview",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "node scripts/dev-server.mjs",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "node --test src/volume-utils.test.mjs",
+    "test": "node --test src/*.test.mjs scripts/*.test.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri"
   },

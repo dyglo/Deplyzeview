@@ -26,7 +26,7 @@ export class RustMarketDataProvider {
   }
 
   async getBars(ticker: string, timeframe: string, range: BarRange): Promise<Ohlcv[]> {
-    if (!(window as any).__TAURI_INTERNALS__) throw new Error('Run Vela Terminal in its Tauri desktop shell to access the Rust market-data service.');
+    if (!(window as any).__TAURI_INTERNALS__) throw new Error('Run DeplyzeView in its Tauri desktop shell to access the Rust market-data service.');
     const bars = await invoke<MarketBar[]>('get_market_bars', {
       venue: this.venue,
       instrument: ticker.toUpperCase(),
