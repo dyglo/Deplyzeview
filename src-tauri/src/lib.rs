@@ -1,5 +1,6 @@
 mod app_paths;
 mod market_data;
+mod remote_data;
 
 use tauri::Manager;
 
@@ -30,6 +31,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            remote_data::get_remote_market_data,
             market_data::subscribe_market_feed,
             market_data::get_market_bars,
             market_data::unsubscribe_market_feed,

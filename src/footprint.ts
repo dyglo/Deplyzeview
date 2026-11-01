@@ -8,7 +8,8 @@ type BarFootprint = { time: number; levels: Record<string, Level> };
 type FootprintData = { bars: BarFootprint[]; step: number; ticksPerRow: number };
 export type FootprintMode = 'split' | 'delta' | 'total';
 export type FootprintUnit = 'quote' | 'coin';
-export type TradeVenue = 'binance' | 'coinbase' | 'hyperliquid';
+export type TradeVenue = 'binance' | 'coinbase' | 'hyperliquid' | 'oanda' | 'narwhal' | 'finzdata';
+export const isGatewayVenue = (venue: TradeVenue) => ['oanda', 'narwhal', 'finzdata'].includes(venue);
 export type FeedHealth = { venue: string; instrument: string; status: string; lastMessageMs?: number | null; coverageStartMs?: number | null; coverageEndMs?: number | null; tradesStored: number; gapsDetected: number; gapDetectionAvailable: boolean; quoteCurrency?: string; historyNote: string; lastError?: string | null };
 export type FootprintHistory = { venue: string; instrument: string; bars: Array<{ time: number; levels: Array<Level & { price: number }> }>; step: number; ticksPerRow: number; coverageStartMs?: number | null; coverageEndMs?: number | null; trades: number; sourceEventIds: string[]; gapsDetected: number; historyNote: string; quoteCurrency: string };
 type BucketUpdate = { venue: string; instrument: string; barTime: number; price: number; bid: number; ask: number; bidQuote: number; askQuote: number; sourceEventId: string };
@@ -28,6 +29,7 @@ export function setFootprintTicks(value: number) {
   for (const restart of activeRestarts) restart();
 }
 export function setTradeVenue(next: TradeVenue) { activeVenue = next; }
+export function publishFeedHealth(health: FeedHealth) { healthSink?.(health); }
 export function setFeedHealthSink(sink: (health: FeedHealth) => void) { healthSink = sink; }
 
 function intervalMilliseconds(timeframe: string | number): number {
@@ -91,6 +93,11 @@ function createFootprintEngine(): SeriesDataEngine {
     await initialize();
   };
   const initialize = async () => {
+    if (isGatewayVenue(venue)) {
+      healthSink?.({ venue, instrument, status: 'unavailable', tradesStored: 0, gapsDetected: 0, gapDetectionAvailable: false, historyNote: 'This provider has no aggressor-side trade feed. Quote tick counts and candle volume cannot supply a volume footprint.' });
+      flush();
+      return;
+    }
     if (!active || !host || !(window as any).__TAURI_INTERNALS__) {
       healthSink?.({ venue, instrument, status: 'desktop-backend-required', tradesStored: 0, gapsDetected: 0, gapDetectionAvailable: false, historyNote: 'The Rust market-data service is available in the Tauri desktop app.' });
       flush();

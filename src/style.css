@@ -143,3 +143,4 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 .drawing-favorites-grip:active{cursor:grabbing}
 .drawing-favorites-close{display:grid;place-items:center;width:17px;height:27px;flex:none;padding:0;color:var(--muted)}
 .favorites-blocked{visibility:hidden;pointer-events:none}
+.market-results{max-height:230px;overflow-y:auto;margin:5px 0 9px}.market-result{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;padding:8px;text-align:left;border-radius:3px}.market-result:hover,.market-result:focus-visible{background:var(--tone-272930,#272930)}.market-result strong{font-size:10px;font-weight:500}.market-result small{font-size:8px;color:var(--tone-83858e,#83858e);overflow-wrap:anywhere}.market-back{padding:7px 0;color:var(--tone-a4a6ad,#a4a6ad);font-size:9px}

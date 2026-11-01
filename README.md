@@ -42,7 +42,7 @@ The development launcher reuses a running server only when it identifies this ex
 
 ## Market data and chart engine
 
-Default market is Binance BTCUSDT spot at 1-hour intervals. The venue selector also includes Coinbase Exchange spot products (for example BTC-USD) and Hyperliquid crypto perpetuals (for example BTC). These are the only configured feeds. Forex, commodities, cash indices and dated futures are not supported until a broker or licensed data provider is selected and its market-data integration and entitlements are configured. Typing a symbol alone does not establish provider coverage. The interval controls switch the active DeplyzeView chart. Availability depends on each venue, region and network policies. The charting dependency and its original license notices are documented in `VELA-LICENSE` and `VELA-NOTICE`.
+Default market is Binance BTCUSDT spot at 1-hour intervals. The venue selector also includes Coinbase Exchange spot products (for example BTC-USD) and Hyperliquid crypto perpetuals (for example BTC). A separate authenticated gateway adds OANDA forex/metals/CFDs, Narwhal daily front-month futures and optional FinzData daily individual-contract research. Configure credentials before using these feeds; typing a symbol alone does not establish coverage. Use the existing symbol input with `OANDA:EUR_USD`, `NARWHAL:GC` (1D), or an explicitly discovered FinzData contract. See [gateway setup, credentials, coverage and deployment](docs/multi-asset-gateway.md). The interval controls switch the active DeplyzeView chart. Availability depends on each provider, region and account permissions. The charting dependency and its original license notices are documented in `VELA-LICENSE` and `VELA-NOTICE`.
 
 
 ## Rust market-data backend

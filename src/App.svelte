@@ -11,8 +11,9 @@
   import { defaultExtras, readPreferences, writePreferences, type ChartExtras } from './chart-preferences';
   import { Vela, type ChartConfig } from '@luxalgo/vela';
   import { RustMarketDataProvider } from './data-provider';
+  import { invoke } from '@tauri-apps/api/core';
   import './footprint';
-  import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink } from './footprint';
+  import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink, isGatewayVenue } from './footprint';
   import { ArrowLeftRight, BarChart3, ChevronDown, ChevronRight, Eye, Minus, Settings2, Square, Undo2, Maximize2, CircleHelp, CandlestickChart, X, SlidersHorizontal } from 'lucide-svelte';
   let chartHost: HTMLDivElement;
   let chartArea: HTMLElement;
@@ -33,6 +34,25 @@
   let venue = 'BINANCE · SPOT';
   let symbolDraft = symbol;
   let marketMenuOpen = false;
+  type InstrumentChoice = { symbol: string; name?: string; instrumentType: string; contractExpiry?: string | null; rollStatus?: string | null };
+  let browseVenue: TradeVenue = 'binance';
+  let browseRoot = '';
+  let instrumentChoices: InstrumentChoice[] = [];
+  let discoveryLoading = false;
+  let discoveryError = '';
+  let discoveryRequest = 0;
+  $: filteredInstruments = instrumentChoices.filter(item => {
+    const query = symbolDraft.trim().toUpperCase().replace(/[_/.-]/g, '');
+    return !query || `${item.symbol} ${item.name ?? ''}`.toUpperCase().replace(/[_/.-]/g, '').includes(query);
+  }).slice(0, 150);
+  const providerChoices: { id: TradeVenue; name: string; detail: string; badge: string; badgeClass?: string }[] = [
+    { id:'binance', name:'Binance', detail:'Spot · USDT pairs', badge:'B' },
+    { id:'coinbase', name:'Coinbase', detail:'Exchange · USD pairs', badge:'C', badgeClass:'coinbase-symbol' },
+    { id:'hyperliquid', name:'Hyperliquid', detail:'Perpetuals · USDC-margined', badge:'H', badgeClass:'hyper-symbol' },
+    { id:'oanda', name:'OANDA', detail:'Forex · Account instruments', badge:'O' },
+    { id:'narwhal', name:'Narwhal', detail:'Daily · Front-month futures', badge:'N' },
+    { id:'finzdata', name:'FinzData', detail:'Daily · Individual futures contracts', badge:'F' },
+  ];
   let styleMenuOpen = false;
   let settingsOpen = false;
   let settingsDialogPosition: { left: number; top: number } | undefined;
@@ -40,7 +60,7 @@
   let settingsTab = 'General';
   let status = 'Connecting · Binance Spot';
   let feedHealth: FeedHealth | undefined;
-  setFeedHealthSink((next) => { feedHealth = next; status = next.status === 'live' ? `Live · ${venue}` : next.status === 'error' ? `Feed issue · ${venue}` : `${next.status} · ${venue}`; });
+  setFeedHealthSink((next) => { if (next.venue !== venueId || next.instrument !== symbol) return; feedHealth = next; status = next.status === 'live' ? `Live · ${venue}` : next.status === 'error' ? `Feed issue · ${venue}` : `${next.status} · ${venue}`; });
   let clock = new Date();
   let timezone = defaultTimezone;
   let footprintMode: FootprintMode = 'split';
@@ -100,9 +120,12 @@
     chart.data.registerProvider('binance', new RustMarketDataProvider('binance'));
     chart.data.registerProvider('coinbase', new RustMarketDataProvider('coinbase'));
     chart.data.registerProvider('hyperliquid', new RustMarketDataProvider('hyperliquid'));
-    chart.ready().then(() => status = `Live · ${venue}`).catch(() => status = 'Unable to load market data');
+    chart.data.registerProvider('oanda', new RustMarketDataProvider('oanda'));
+    chart.data.registerProvider('narwhal', new RustMarketDataProvider('narwhal'));
+    chart.data.registerProvider('finzdata', new RustMarketDataProvider('finzdata'));
+    chart.ready().then(() => status = ['oanda','narwhal','finzdata'].includes(venueId) ? `Market data · ${venue}` : `Live · ${venue}`).catch(() => status = 'Unable to load market data');
     let removeFeedHealth: (() => void) | undefined;
-    if ('__TAURI_INTERNALS__' in window) import('@tauri-apps/api/event').then(({ listen }) => listen<FeedHealth>('feed-health', (event) => { feedHealth = event.payload; status = event.payload.status === 'live' ? `Live · ${venue}` : `${event.payload.status} · ${venue}`; })).then((remove) => { removeFeedHealth = remove; });
+    if ('__TAURI_INTERNALS__' in window) import('@tauri-apps/api/event').then(({ listen }) => listen<FeedHealth>('feed-health', (event) => { if (event.payload.venue !== venueId || event.payload.instrument !== symbol) return; feedHealth = event.payload; status = event.payload.status === 'live' ? `Live · ${venue}` : `${event.payload.status} · ${venue}`; })).then((remove) => { removeFeedHealth = remove; });
     const timer = window.setInterval(() => clock = new Date(), 1000);
     const resize = new ResizeObserver(() => chart.resize());
     resize.observe(chartHost);
@@ -222,6 +245,9 @@
   function chartSymbol() { return `${venueId}:${symbol}`; }
   function normalizedSymbol(input: string, provider: TradeVenue) {
     const value = input.trim().toUpperCase();
+    if (provider === 'oanda') return value.replace(/[/-]/g, '_').replace(/[^A-Z0-9_]/g, '');
+    if (provider === 'narwhal') return value.replace(/[^A-Z0-9]/g, '');
+    if (provider === 'finzdata') return value.replace(/[^A-Z0-9.]/g, '');
     if (provider === 'binance') return value.replace(/[^A-Z0-9]/g, '');
     if (provider === 'coinbase') {
       const parts = value.replace(/[^A-Z0-9-]/g, '').split('-').filter(Boolean);
@@ -232,6 +258,12 @@
     return value.replace(/[^A-Z0-9:]/g, '').replace(/\.P$/, '');
   }
   function selectVenue(next: TradeVenue) {
+    browseVenue = next;
+    if (isGatewayVenue(next)) {
+      marketMenuOpen = true; venueMenuOpen = false; symbolDraft = '';
+      void loadInstrumentChoices(next);
+      return;
+    }
     venueId = next;
     venue = next === 'binance' ? 'BINANCE · SPOT' : next === 'coinbase' ? 'COINBASE · EXCHANGE' : 'HYPERLIQUID · PERP';
     symbol = next === 'binance' ? 'BTCUSDT' : next === 'coinbase' ? 'BTC-USD' : 'BTC';
@@ -240,10 +272,40 @@
     venueMenuOpen = false;
     if (vela) void vela.setMarket({ symbol: chartSymbol(), timeframe: timeframeCode(timeframe) });
   }
+  async function loadInstrumentChoices(provider: TradeVenue, root = '') {
+    const request = ++discoveryRequest;
+    browseRoot = root; instrumentChoices = []; discoveryError = ''; discoveryLoading = true;
+    try {
+      if (!('__TAURI_INTERNALS__' in window)) throw new Error('Open the desktop app to browse configured market data.');
+      const choices = await invoke<InstrumentChoice[]>('get_remote_market_data', { provider, action: root ? 'contracts' : 'instruments', instrument: root || null });
+      if (request !== discoveryRequest) return;
+      instrumentChoices = [...choices].sort((a,b) => Number(!!b.rollStatus?.startsWith('current')) - Number(!!a.rollStatus?.startsWith('current')) || a.symbol.localeCompare(b.symbol));
+    } catch (error) {
+      if (request === discoveryRequest) discoveryError = String(error);
+    } finally { if (request === discoveryRequest) discoveryLoading = false; }
+  }
+  function openMarketSearch() {
+    marketMenuOpen = !marketMenuOpen; venueMenuOpen = false;
+    browseVenue = venueId; symbolDraft = isGatewayVenue(venueId) ? '' : symbol;
+    if (marketMenuOpen && isGatewayVenue(venueId)) void loadInstrumentChoices(venueId);
+  }
+  function pickInstrument(item: InstrumentChoice) {
+    if (item.instrumentType === 'futures_root') {
+      symbolDraft = ''; void loadInstrumentChoices(browseVenue, item.symbol); return;
+    }
+    symbolDraft = item.symbol;
+    applySymbol();
+  }
   function applySymbol() {
-    const next = normalizedSymbol(symbolDraft, venueId);
+    const qualified = /^(oanda|narwhal|finzdata|binance|coinbase|hyperliquid):(.+)$/i.exec(symbolDraft.trim());
+    const provider = qualified ? qualified[1].toLowerCase() as TradeVenue : browseVenue;
+    const next = normalizedSymbol(qualified ? qualified[2] : symbolDraft, provider);
     if (!next) return;
-    symbol = next; marketMenuOpen = false; status = `Live · ${venue}`;
+    venueId = provider;
+    venue = provider === 'finzdata' ? 'FINZDATA · FUTURES' : provider === 'oanda' ? 'OANDA · FX / CFD' : provider === 'narwhal' ? 'NARWHAL · FRONT MONTH' : provider === 'binance' ? 'BINANCE · SPOT' : provider === 'coinbase' ? 'COINBASE · EXCHANGE' : 'HYPERLIQUID · PERP';
+    setTradeVenue(provider);
+    if (provider === 'narwhal' || provider === 'finzdata') timeframe = '1D';
+    symbol = next; marketMenuOpen = false; status = `Loading · ${venue}`;
     if (vela) void vela.setMarket({ symbol: chartSymbol(), timeframe: timeframeCode(timeframe) });
   }
   function coverageText() {
@@ -266,7 +328,39 @@
 <div class="app-shell" data-theme={extras.theme}>
   <header class="titlebar" data-tauri-drag-region><div class="brand-mark" title="DeplyzeView"><img src={appIcon} alt="DeplyzeView" draggable="false"/></div><span class="brand-divider"></span><span class="workspace-label">Chart</span><div class="window-controls"><button aria-label="Minimize" onclick={() => windowAction('minimize')}><Minus size={12}/></button><button aria-label="Maximize" onclick={() => windowAction('maximize')}><Square size={10}/></button><button class="close" aria-label="Close" onclick={() => windowAction('close')}><X size={12}/></button></div></header>
   <nav class="topbar">
-    <div class="market-selector"><button class="symbol-button" onclick={() => { marketMenuOpen = !marketMenuOpen; symbolDraft = symbol; }}><span class="exchange">{venue}</span><span class="symbol-line">{symbol}<ChevronDown size={11}/></span></button><button class="venue-trigger" aria-label="Choose venue" onclick={() => venueMenuOpen = !venueMenuOpen}><ChevronDown size={10}/></button>{#if venueMenuOpen}<div class="venue-popover"><span class="venue-heading">MARKET DATA PROVIDER</span><button class:venue-active={venueId === 'binance'} onclick={() => selectVenue('binance')}><span class="venue-symbol">B</span><span><strong>Binance</strong><small>Spot · USDT pairs</small></span>{#if venueId === 'binance'}<span class="venue-check">●</span>{/if}</button><button class:venue-active={venueId === 'coinbase'} onclick={() => selectVenue('coinbase')}><span class="venue-symbol coinbase-symbol">C</span><span><strong>Coinbase</strong><small>Exchange · USD pairs</small></span>{#if venueId === 'coinbase'}<span class="venue-check">●</span>{/if}</button><button class:venue-active={venueId === 'hyperliquid'} onclick={() => selectVenue('hyperliquid')}><span class="venue-symbol hyper-symbol">H</span><span><strong>Hyperliquid</strong><small>Perpetuals · USDC-margined</small></span>{#if venueId === 'hyperliquid'}<span class="venue-check">●</span>{/if}</button><div class="venue-disclaimer">Crypto feeds only in this build. FX, commodities, indices and dated futures need a selected data provider.</div></div>{/if}{#if marketMenuOpen}<div class="symbol-popover"><label for="symbol-input">Search market</label><input id="symbol-input" bind:value={symbolDraft} onkeydown={(e) => e.key === 'Enter' && applySymbol()}/><div class="search-hint">{venueId === 'coinbase' ? 'BTC-USD, ETH-USD, SOL-USD' : venueId === 'hyperliquid' ? 'BTC, ETH, SOL' : 'BTCUSDT, ETHUSDT, SOLUSDT'}</div><button class="apply-market" onclick={applySymbol}>Open market <ChevronRight size={13}/></button></div>{/if}</div>
+    <div class="market-selector">
+      <button class="symbol-button" onclick={openMarketSearch}><span class="exchange">{venue}</span><span class="symbol-line">{symbol}<ChevronDown size={11}/></span></button>
+      <button class="venue-trigger" aria-label="Choose venue" onclick={() => { venueMenuOpen = !venueMenuOpen; marketMenuOpen = false; }}><ChevronDown size={10}/></button>
+      {#if venueMenuOpen}
+        <div class="venue-popover"><span class="venue-heading">MARKET DATA PROVIDER</span>
+          {#each providerChoices as provider}
+            <button class:venue-active={venueId === provider.id} onclick={() => selectVenue(provider.id)}><span class="venue-symbol {provider.badgeClass ?? ''}">{provider.badge}</span><span><strong>{provider.name}</strong><small>{provider.detail}</small></span>{#if venueId === provider.id}<span class="venue-check">●</span>{/if}</button>
+          {/each}
+          <div class="venue-disclaimer">Availability follows each provider and your account permissions.</div>
+        </div>
+      {/if}
+      {#if marketMenuOpen}
+        <div class="symbol-popover">
+          <label for="symbol-input">Search market{isGatewayVenue(browseVenue) ? ` · ${providerChoices.find(p => p.id === browseVenue)?.name}` : ''}</label>
+          <input id="symbol-input" bind:value={symbolDraft} onkeydown={(e) => { if (e.key === 'Enter') { if (isGatewayVenue(browseVenue) && filteredInstruments.length) pickInstrument(filteredInstruments[0]); else applySymbol(); } }}/>
+          {#if isGatewayVenue(browseVenue)}
+            {#if browseRoot}<button class="market-back" onclick={() => { symbolDraft = ''; void loadInstrumentChoices(browseVenue); }}>← All futures markets · {browseRoot}</button>{/if}
+            <div class="search-hint">{browseVenue === 'oanda' ? 'Account instruments · No unavailable markets added' : browseVenue === 'narwhal' ? 'Daily unadjusted front-month series · Quotes may be delayed' : browseRoot ? 'Choose an individual contract · Daily history' : 'Choose a futures market to browse its contracts'}</div>
+            {#if discoveryLoading}<div class="search-hint" role="status">Loading instruments…</div>
+            {:else if discoveryError}<div class="search-hint feed-error-text" role="alert">{discoveryError}</div>
+            {:else}
+              <div class="market-results" aria-label="Available instruments">
+                {#each filteredInstruments as item}
+                  <button class="market-result" onclick={() => pickInstrument(item)}><strong>{item.symbol}</strong><small>{item.name ?? item.instrumentType}{item.rollStatus ? ` · ${item.rollStatus}` : ''}{item.contractExpiry ? ` · Expiry ${item.contractExpiry}` : ''}</small></button>
+                {/each}
+                {#if !filteredInstruments.length}<div class="search-hint">No matching instruments for this provider.</div>{/if}
+              </div>
+            {/if}
+          {:else}<div class="search-hint">{browseVenue === 'coinbase' ? 'BTC-USD, ETH-USD, SOL-USD' : browseVenue === 'hyperliquid' ? 'BTC, ETH, SOL' : 'BTCUSDT, ETHUSDT, SOLUSDT'}</div>{/if}
+          <button class="apply-market" onclick={() => { if (isGatewayVenue(browseVenue) && filteredInstruments.length) pickInstrument(filteredInstruments[0]); else applySymbol(); }}>Open market <ChevronRight size={13}/></button>
+        </div>
+      {/if}
+    </div>
     <div class="top-divider"></div><div class="timeframes">{#each intervals as interval}<button class:chosen={timeframe === interval} onclick={() => chooseTimeframe(interval)}>{interval}</button>{/each}<button class="more-time" aria-label="More intervals"><ChevronDown size={11}/></button></div>
     <div class="top-divider"></div><div class="style-picker"><button class="chart-style" aria-label="Chart style" aria-expanded={styleMenuOpen} class:style-selected={chartStyle !== 'candles'} onclick={() => styleMenuOpen = !styleMenuOpen} onkeydown={(e) => { if (e.key === 'Escape') styleMenuOpen = false; }}><CandlestickChart size={14}/><span>{chartStyles.find(style => style.id === chartStyle)?.label}</span><ChevronDown size={10}/></button>{#if styleMenuOpen}<div class="style-menu" role="group" aria-label="Chart styles">{#each chartStyles as style}<button class:menu-selected={chartStyle === style.id} aria-pressed={chartStyle === style.id} onclick={() => chooseStyle(style.id)}><CandlestickChart size={14}/>{style.label}{#if chartStyle === style.id}<span class="new-tag">SELECTED</span>{/if}</button>{/each}<div class="style-menu-note">Appearance controls in Chart settings</div></div>{/if}</div>
     <div class="top-spacer"></div>{#if chartStyle === 'footprint'}<button class="top-action" onclick={() => { indicatorsOpen = false; appearanceOpen = false; settingsOpen = true; }}><SlidersHorizontal size={13}/> Footprint</button>{/if}<button class="top-action" aria-label="Indicators" aria-expanded={indicatorsOpen} onclick={() => { appearanceOpen = false; settingsOpen = false; marketMenuOpen = false; venueMenuOpen = false; styleMenuOpen = false; vela?.renderer.closeDialogs(); indicatorsOpen = !indicatorsOpen; }}><SlidersHorizontal size={13}/> Indicators</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action"><Eye size={13}/> View as</button><button class="top-icon" aria-label="Chart settings" onclick={() => { indicatorsOpen = false; settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
