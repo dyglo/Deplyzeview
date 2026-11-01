@@ -16,6 +16,8 @@ Requires Node.js 24 or later, npm, the Rust stable toolchain/Cargo, and the [Tau
 ## Chart workspace
 
 - Choose Candles, Hollow Candles, OHLC Bars, Line, Area, Baseline, Columns, Heikin Ashi, or Volume Footprint from the compact chart-style menu.
+- Drawing tools are organized into seven groups with sectioned flyouts. Click the group icon to use its last-selected tool or its chevron to browse the full collection. Star a tool to add it to the floating horizontal favorites toolbar. Drag its grip to move it, or use the grip's arrow keys to nudge it. Favorites, toolbar position/visibility, and each group's last-used tool are saved with workspace preferences. The catalog exposes all drawing tools registered by the installed engine; it does not claim complete TradingView tool parity.
+- Open **Indicators** to search the engine's built-in catalog by name or abbreviation (for example EMA or RSI) and add studies to the chart. Repeated instances are supported where the indicator allows them. Indicators unavailable for the current market are disabled. Use each indicator's chart label to configure, hide, or remove it. This catalog does not include TradingView community scripts or Pine Script imports.
 - Open **Chart settings** for symbol colors, canvas, scales, crosshair, and volume controls. The color palette includes custom colors and opacity.
 - Choose **DeplyzeView Light** or **DeplyzeView Dark** under **Template**. Changes preview immediately; **Cancel** restores the previous settings and **Ok** keeps them.
 - Select **Nairobi / Kampala (UTC+3)** from the footer timezone selector or chart settings. The chart and clock use the same saved timezone.

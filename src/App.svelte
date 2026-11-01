@@ -3,15 +3,19 @@
   import appIcon from '../src-tauri/icons/icon.png';
   import { defaultTimezone, timezoneChoices, formatClock } from './timezones';
   import { onMount } from 'svelte';
+  import DrawingToolbar from './DrawingToolbar.svelte';
+  import type { DrawingToolPreferences } from './drawing-catalog';
+  import IndicatorPicker from './IndicatorPicker.svelte';
   import ChartAppearance from './ChartAppearance.svelte';
   import { chartStyles, isChartStyle, setPriceAppearance, type ChartStyleId } from './chart-styles';
   import { defaultExtras, readPreferences, writePreferences, type ChartExtras } from './chart-preferences';
-  import { Vela, type ChartConfig, type DrawingTypeKey } from '@luxalgo/vela';
+  import { Vela, type ChartConfig } from '@luxalgo/vela';
   import { RustMarketDataProvider } from './data-provider';
   import './footprint';
   import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink } from './footprint';
-  import { Activity, ArrowDown, ArrowLeftRight, ArrowUp, BarChart3, ChevronDown, ChevronRight, Crosshair, Eye, Minus, MoveUpRight, Pencil, Plus, Settings2, Square, Type, Undo2, Maximize2, CircleHelp, CandlestickChart, Grip, X, TrendingUp, SlidersHorizontal } from 'lucide-svelte';
+  import { ArrowLeftRight, BarChart3, ChevronDown, ChevronRight, Eye, Minus, Settings2, Square, Undo2, Maximize2, CircleHelp, CandlestickChart, X, SlidersHorizontal } from 'lucide-svelte';
   let chartHost: HTMLDivElement;
+  let chartArea: HTMLElement;
   let vela: Vela | undefined;
   let symbol = 'BTCUSDT';
   let venueId: TradeVenue = 'binance';
@@ -19,6 +23,7 @@
   let timeframe = '1h';
   let chartStyle: ChartStyleId = 'candles';
   let appearanceOpen = false;
+  let indicatorsOpen = false;
   let appearance: ChartConfig | undefined;
   let defaultAppearance: ChartConfig;
   let appliedTheme: AppTheme = 'dark';
@@ -33,13 +38,6 @@
   let settingsDialogPosition: { left: number; top: number } | undefined;
   let settingsDialogDrag: { pointerId: number; startX: number; startY: number; left: number; top: number; dialog: HTMLDialogElement; container: HTMLElement } | undefined;
   let settingsTab = 'General';
-  let toolActive = 'crosshair';
-  let positionButton: 'long' | 'short' = 'long';
-  let selectedDrawingIds: string[] = [];
-  let selectedDrawingsVisible = true;
-  let selectedDrawingsLocked = false;
-  let canUndoDrawings = false;
-  let canRedoDrawings = false;
   let status = 'Connecting · Binance Spot';
   let feedHealth: FeedHealth | undefined;
   setFeedHealthSink((next) => { feedHealth = next; status = next.status === 'live' ? `Live · ${venue}` : next.status === 'error' ? `Feed issue · ${venue}` : `${next.status} · ${venue}`; });
@@ -55,13 +53,6 @@
     { id: 'total', name: 'Total Volume', hint: 'Combined traded volume per level' }
   ];
   const intervals = ['1m', '5m', '15m', '1h', '4h', '1D'];
-  const tools = [
-    { id: 'crosshair', title: 'Cursor', icon: Crosshair }, { id: 'trend', title: 'Trend line', icon: TrendingUp }, { id: 'ray', title: 'Ray', icon: MoveUpRight },
-    { id: 'horizontal', title: 'Horizontal line', icon: Minus }, { id: 'rectangle', title: 'Rectangle', icon: Square }, { id: 'brush', title: 'Brush', icon: Pencil },
-    { id: 'text', title: 'Text', icon: Type }, { id: 'measure', title: 'Measure', icon: ArrowLeftRight }, { id: 'long', title: 'Long position', icon: ArrowUp },
-    { id: 'short', title: 'Short position', icon: ArrowDown }, { id: 'zoom', title: 'Magnifier', icon: Plus }, { id: 'visibility', title: 'Visibility', icon: Eye },
-    { id: 'lock', title: 'Lock drawings', icon: Grip }
-  ];
   onMount(() => {
     const chart = new Vela(chartHost, { symbol: chartSymbol(), timeframe: '60', bars: 500, live: true, theme: 'dark', upColor: '#8a746e', downColor: '#c16f61', currentPriceLine: true, volume: true, drawings: true, animations: { intro: false, zoom: true, pan: true } });
     vela = chart;
@@ -110,26 +101,12 @@
     chart.data.registerProvider('coinbase', new RustMarketDataProvider('coinbase'));
     chart.data.registerProvider('hyperliquid', new RustMarketDataProvider('hyperliquid'));
     chart.ready().then(() => status = `Live · ${venue}`).catch(() => status = 'Unable to load market data');
-    const syncHistory = () => { canUndoDrawings = chart.drawings.canUndo(); canRedoDrawings = chart.drawings.canRedo(); };
-    const syncSelection = () => {
-      const selected = chart.drawings.all().filter((drawing) => selectedDrawingIds.includes(drawing.id));
-      selectedDrawingsVisible = selected.length > 0 && selected.every((drawing) => drawing.visible !== false);
-      selectedDrawingsLocked = selected.length > 0 && selected.every((drawing) => drawing.locked === true);
-      syncHistory();
-    };
-    const offDrawingTool = chart.on('drawing:tool', ({ type }) => { toolActive = toolbarIdForTool(type); syncHistory(); });
-    const offDrawingMode = chart.on('drawing:mode', ({ mode }) => { toolActive = mode === 'measure' ? 'measure' : toolbarIdForTool(chart.drawings.getTool()); syncHistory(); });
-    const offDrawingSelection = chart.on('drawing:selected', ({ ids }) => { selectedDrawingIds = ids; syncSelection(); });
-    const offDrawingCreated = chart.on('drawing:created', syncSelection);
-    const offDrawingEdited = chart.on('drawing:edited', syncSelection);
-    const offDrawingRemoved = chart.on('drawing:removed', syncSelection);
-    syncHistory();
     let removeFeedHealth: (() => void) | undefined;
     if ('__TAURI_INTERNALS__' in window) import('@tauri-apps/api/event').then(({ listen }) => listen<FeedHealth>('feed-health', (event) => { feedHealth = event.payload; status = event.payload.status === 'live' ? `Live · ${venue}` : `${event.payload.status} · ${venue}`; })).then((remove) => { removeFeedHealth = remove; });
     const timer = window.setInterval(() => clock = new Date(), 1000);
     const resize = new ResizeObserver(() => chart.resize());
     resize.observe(chartHost);
-    return () => { flushPreferences(); window.removeEventListener('pagehide', flushPreferences); offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); offDrawingTool(); offDrawingMode(); offDrawingSelection(); offDrawingCreated(); offDrawingEdited(); offDrawingRemoved(); removeFeedHealth?.(); clearInterval(timer); resize.disconnect(); chart.destroy(); };
+    return () => { flushPreferences(); window.removeEventListener('pagehide', flushPreferences); offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); removeFeedHealth?.(); clearInterval(timer); resize.disconnect(); chart.destroy(); };
   });
   // Share the chart overlay with the renderer's indicator legend. Measure the
   // symbol block so wrapping/resizing never requires a fixed indicator offset.
@@ -183,7 +160,7 @@
   function resetAppearance() {
     const { stacking, series, ...defaults } = defaultAppearance;
     vela?.renderer.applyConfig({ ...defaults, series: { style: chartStyle, spacing: series.spacing } });
-    applyExtras(structuredClone(defaultExtras));
+    applyExtras({ ...structuredClone(defaultExtras), drawingTools: extras.drawingTools });
   }
   function chooseMode(next: FootprintMode) { footprintMode = next; setFootprintMode(next); }
   function chooseUnit(next: FootprintUnit) { footprintUnit = next; setFootprintUnit(next); }
@@ -237,35 +214,11 @@
       top: Math.max(0, Math.min(Math.max(0, containerRect.height - dialogRect.height), current.top + offset[1])),
     };
   }
-  function toolbarIdForTool(type: DrawingTypeKey | null): string {
-    if (!type) return 'crosshair';
-    if (type === 'position') return positionButton;
-    const ids: Partial<Record<DrawingTypeKey, string>> = { trendline: 'trend', ray: 'ray', hline: 'horizontal', box: 'rectangle', freehand: 'brush', text: 'text', magnifier: 'zoom' };
-    return ids[type] ?? 'crosshair';
+  function updateDrawingPreferences(drawingTools: DrawingToolPreferences) {
+    extras = { ...extras, drawingTools };
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveAppearance, 180);
   }
-  function selectDrawingTool(id: string) {
-    if (!vela) return;
-    if (id === 'visibility' || id === 'lock') {
-      const selected = vela.drawings.all().filter((drawing) => selectedDrawingIds.includes(drawing.id));
-      if (selected.length === 0) return;
-      if (id === 'visibility') {
-        const visible = !selected.every((drawing) => drawing.visible !== false);
-        for (const drawing of selected) vela.drawings.show(drawing.id, visible);
-        selectedDrawingsVisible = visible;
-      } else {
-        const locked = !selected.every((drawing) => drawing.locked === true);
-        for (const drawing of selected) vela.drawings.lock(drawing.id, locked);
-        selectedDrawingsLocked = locked;
-      }
-      return;
-    }
-    if (id === 'measure') { vela.drawings.setMode('measure'); return; }
-    if (id === 'long' || id === 'short') positionButton = id;
-    const types: Record<string, DrawingTypeKey> = { trend: 'trendline', ray: 'ray', horizontal: 'hline', rectangle: 'box', brush: 'freehand', text: 'text', long: 'position', short: 'position', zoom: 'magnifier' };
-    vela.drawings.setTool(types[id] ?? null);
-  }
-  function undoDrawing() { vela?.drawings.undo(); canUndoDrawings = vela?.drawings.canUndo() ?? false; canRedoDrawings = vela?.drawings.canRedo() ?? false; }
-  function redoDrawing() { vela?.drawings.redo(); canUndoDrawings = vela?.drawings.canUndo() ?? false; canRedoDrawings = vela?.drawings.canRedo() ?? false; }
   function chartSymbol() { return `${venueId}:${symbol}`; }
   function normalizedSymbol(input: string, provider: TradeVenue) {
     const value = input.trim().toUpperCase();
@@ -316,10 +269,11 @@
     <div class="market-selector"><button class="symbol-button" onclick={() => { marketMenuOpen = !marketMenuOpen; symbolDraft = symbol; }}><span class="exchange">{venue}</span><span class="symbol-line">{symbol}<ChevronDown size={11}/></span></button><button class="venue-trigger" aria-label="Choose venue" onclick={() => venueMenuOpen = !venueMenuOpen}><ChevronDown size={10}/></button>{#if venueMenuOpen}<div class="venue-popover"><span class="venue-heading">MARKET DATA PROVIDER</span><button class:venue-active={venueId === 'binance'} onclick={() => selectVenue('binance')}><span class="venue-symbol">B</span><span><strong>Binance</strong><small>Spot · USDT pairs</small></span>{#if venueId === 'binance'}<span class="venue-check">●</span>{/if}</button><button class:venue-active={venueId === 'coinbase'} onclick={() => selectVenue('coinbase')}><span class="venue-symbol coinbase-symbol">C</span><span><strong>Coinbase</strong><small>Exchange · USD pairs</small></span>{#if venueId === 'coinbase'}<span class="venue-check">●</span>{/if}</button><button class:venue-active={venueId === 'hyperliquid'} onclick={() => selectVenue('hyperliquid')}><span class="venue-symbol hyper-symbol">H</span><span><strong>Hyperliquid</strong><small>Perpetuals · USDC-margined</small></span>{#if venueId === 'hyperliquid'}<span class="venue-check">●</span>{/if}</button><div class="venue-disclaimer">Crypto feeds only in this build. FX, commodities, indices and dated futures need a selected data provider.</div></div>{/if}{#if marketMenuOpen}<div class="symbol-popover"><label for="symbol-input">Search market</label><input id="symbol-input" bind:value={symbolDraft} onkeydown={(e) => e.key === 'Enter' && applySymbol()}/><div class="search-hint">{venueId === 'coinbase' ? 'BTC-USD, ETH-USD, SOL-USD' : venueId === 'hyperliquid' ? 'BTC, ETH, SOL' : 'BTCUSDT, ETHUSDT, SOLUSDT'}</div><button class="apply-market" onclick={applySymbol}>Open market <ChevronRight size={13}/></button></div>{/if}</div>
     <div class="top-divider"></div><div class="timeframes">{#each intervals as interval}<button class:chosen={timeframe === interval} onclick={() => chooseTimeframe(interval)}>{interval}</button>{/each}<button class="more-time" aria-label="More intervals"><ChevronDown size={11}/></button></div>
     <div class="top-divider"></div><div class="style-picker"><button class="chart-style" aria-label="Chart style" aria-expanded={styleMenuOpen} class:style-selected={chartStyle !== 'candles'} onclick={() => styleMenuOpen = !styleMenuOpen} onkeydown={(e) => { if (e.key === 'Escape') styleMenuOpen = false; }}><CandlestickChart size={14}/><span>{chartStyles.find(style => style.id === chartStyle)?.label}</span><ChevronDown size={10}/></button>{#if styleMenuOpen}<div class="style-menu" role="group" aria-label="Chart styles">{#each chartStyles as style}<button class:menu-selected={chartStyle === style.id} aria-pressed={chartStyle === style.id} onclick={() => chooseStyle(style.id)}><CandlestickChart size={14}/>{style.label}{#if chartStyle === style.id}<span class="new-tag">SELECTED</span>{/if}</button>{/each}<div class="style-menu-note">Appearance controls in Chart settings</div></div>{/if}</div>
-    <div class="top-spacer"></div><button class="top-action" onclick={() => { if (chartStyle === 'footprint') { appearanceOpen = false; settingsOpen = true; } else { settingsOpen = false; appearanceOpen = true; } }}><SlidersHorizontal size={13}/> {chartStyle === 'footprint' ? 'Footprint' : 'Indicators'}</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action"><Eye size={13}/> View as</button><button class="top-icon" aria-label="Chart settings" onclick={() => { settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
+    <div class="top-spacer"></div>{#if chartStyle === 'footprint'}<button class="top-action" onclick={() => { indicatorsOpen = false; appearanceOpen = false; settingsOpen = true; }}><SlidersHorizontal size={13}/> Footprint</button>{/if}<button class="top-action" aria-label="Indicators" aria-expanded={indicatorsOpen} onclick={() => { appearanceOpen = false; settingsOpen = false; marketMenuOpen = false; venueMenuOpen = false; styleMenuOpen = false; vela?.renderer.closeDialogs(); indicatorsOpen = !indicatorsOpen; }}><SlidersHorizontal size={13}/> Indicators</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action"><Eye size={13}/> View as</button><button class="top-icon" aria-label="Chart settings" onclick={() => { indicatorsOpen = false; settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
   </nav>
-  <main class="chart-layout"><aside class="drawing-toolbar" aria-label="Drawing tools">{#each tools as tool, index}{#if index === 1 || index === 4 || index === 6 || index === 8 || index === 10 || index === 12}<div class="tool-divider"></div>{/if}<button class:active-tool={toolActive === tool.id || (tool.id === 'visibility' && !selectedDrawingsVisible) || (tool.id === 'lock' && selectedDrawingsLocked)} disabled={(tool.id === 'visibility' || tool.id === 'lock') && selectedDrawingIds.length === 0} aria-pressed={toolActive === tool.id || (tool.id === 'visibility' && !selectedDrawingsVisible) || (tool.id === 'lock' && selectedDrawingsLocked)} aria-label={tool.title} title={tool.title} onclick={() => selectDrawingTool(tool.id)}><svelte:component this={tool.icon} size={14} strokeWidth={1.55}/></button>{/each}<div class="toolbar-bottom"><button aria-label="Undo drawing" title="Undo drawing" disabled={!canUndoDrawings} onclick={undoDrawing}><Undo2 size={14}/></button><button aria-label="Redo drawing" title="Redo drawing" disabled={!canRedoDrawings} onclick={redoDrawing}><Undo2 size={14} class="redo-icon"/></button></div></aside>
-    <section class="chart-area"><div class="chart-legend" use:measureSymbolLegend><div class="legend-main"><span class="pair-name">{symbol}</span></div>{#if chartStyle === 'footprint'}<div class="legend-sub">Bid × Ask</div>{/if}</div><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market chart"></div></div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
+  <main class="chart-layout">{#if vela && chartArea}<DrawingToolbar chart={vela} area={chartArea} preferences={extras.drawingTools} change={updateDrawingPreferences} blocked={appearanceOpen || settingsOpen || indicatorsOpen}/>{:else}<aside class="drawing-toolbar" aria-label="Drawing tools"></aside>{/if}
+    <section class="chart-area" bind:this={chartArea}><div class="chart-legend" use:measureSymbolLegend><div class="legend-main"><span class="pair-name">{symbol}</span></div>{#if chartStyle === 'footprint'}<div class="legend-sub">Bid × Ask</div>{/if}</div><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market chart"></div></div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
+      {#if indicatorsOpen && vela}<IndicatorPicker chart={vela} close={() => indicatorsOpen = false}/>{/if}
       {#if appearanceOpen && appearance}<ChartAppearance config={appearance} {extras} {persistenceError} patch={applyAppearance} changeExtras={applyExtras} {chooseStyle} reset={resetAppearance} close={() => appearanceOpen = false}/>{/if}
       {#if settingsOpen}<div class="settings-scrim" role="presentation" onclick={() => settingsOpen = false}></div><dialog open class="settings-dialog" aria-modal="true" aria-labelledby="settings-title" style={settingsDialogPosition ? `left:${settingsDialogPosition.left}px;top:${settingsDialogPosition.top}px;transform:none` : undefined}><header class="dialog-titlebar" role="toolbar" aria-label="Move settings dialog" tabindex="0" onkeydown={nudgeSettingsDialog} onpointerdown={startSettingsDialogDrag} onpointermove={moveSettingsDialog} onpointerup={endSettingsDialogDrag} onpointercancel={endSettingsDialogDrag}><div><span class="dialog-kicker">CHART SETTINGS</span><h2 id="settings-title">Volume Footprint</h2></div><button class="dialog-close" aria-label="Close settings" onclick={() => settingsOpen = false}><X size={14}/></button></header><nav class="dialog-tabs">{#each tabs as tab}<button class:tab-active={settingsTab === tab} onclick={() => settingsTab = tab}>{tab}</button>{/each}</nav><div class="dialog-content"><div class="dialog-section-label">{settingsTab === 'General' ? 'GENERAL' : settingsTab.toUpperCase()}</div>{#if settingsTab === 'General'}<div class="setting-row"><div class="setting-name"><strong>Unit</strong><small>Volume denomination</small></div><div class="segmented"><button class:segment-active={footprintUnit === 'quote'} onclick={() => chooseUnit('quote')}>{feedHealth?.quoteCurrency ?? 'Quote'}</button><button class:segment-active={footprintUnit === 'coin'} onclick={() => chooseUnit('coin')}>Coin</button></div></div><div class="setting-row"><div class="setting-name"><strong>Ticks per bar</strong><small>Price levels per footprint row</small></div><div class="stepper"><button aria-label="Decrease ticks" onclick={() => changeTicks(tickCount - 1)}>−</button><input type="number" min="1" max="100" bind:value={tickCount} oninput={() => changeTicks(tickCount)}/><span>ticks</span><button aria-label="Increase ticks" onclick={() => changeTicks(tickCount + 1)}>+</button></div></div><div class="setting-row mode-row"><div class="setting-name"><strong>Display mode</strong><small>How trade volume is rendered</small></div><div class="mode-options">{#each modes as item}<button class:mode-active={footprintMode === item.id} onclick={() => chooseMode(item.id)}><span>{item.name}</span><small>{item.hint}</small>{#if footprintMode === item.id}<span class="selected-dot"></span>{/if}</button>{/each}</div></div><div class="data-note"><span class="live-indicator" class:health-error={feedHealth?.status === 'error' || (feedHealth?.gapsDetected ?? 0) > 0}></span><span><strong>{feedHealth?.status === 'live' ? 'Live trade feed' : feedHealth?.status === 'error' ? 'Feed needs attention' : 'Market data service'}</strong><small>{feedHealth ? `${feedHealth.tradesStored.toLocaleString()} stored trades · ${feedHealth.gapDetectionAvailable ? `${feedHealth.gapsDetected} gap(s)` : 'gap detection unavailable'}` : 'Waiting for Rust feed status…'}</small><small>{coverageText()}</small><small>{feedHealth?.historyNote ?? `${venue} public trade history`}</small>{#if feedHealth?.lastError}<small class="feed-error-text">{feedHealth.lastError}</small>{/if}</span></div>{:else}<div class="settings-placeholder"><div class="settings-placeholder-icon"><Settings2 size={17}/></div><strong>{settingsTab} settings</strong><span>Configure {settingsTab.toLowerCase()} visualization for the footprint chart.</span><div class="coming-chip">AVAILABLE IN THIS BUILD</div></div>{/if}</div><footer class="dialog-footer"><span class="footer-hint">Settings apply to the active chart</span><button class="done-button" onclick={() => settingsOpen = false}>Done</button></footer></dialog>{/if}
     </section>

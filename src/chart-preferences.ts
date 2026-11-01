@@ -1,3 +1,4 @@
+import { defaultDrawingTools, readDrawingTools, type DrawingToolPreferences } from './drawing-catalog.ts';
 import type { AppTheme } from './chart-theme';
 import { parseColor } from './color-utils.ts';
 import type { ChartConfig } from '@luxalgo/vela';
@@ -7,11 +8,13 @@ export const preferenceKey = 'deplyzeview.workspace.chart.appearance.v1';
 // Read the previous key once; all subsequent saves use the new app namespace.
 const legacyPreferenceKey = 'vela.workspace.chart.appearance.v1';
 export type ChartExtras = {
+  drawingTools: DrawingToolPreferences;
   theme: AppTheme;
   volume: { visible: boolean; upColor: string; downColor: string; heightPct: number };
   crosshair: 'both' | 'vertical' | 'horizontal' | 'hidden';
 };
 export const defaultExtras: ChartExtras = {
+  drawingTools: defaultDrawingTools(),
   theme: 'dark',
   volume: { visible: true, upColor: '#8a746e', downColor: '#c16f61', heightPct: 20 },
   crosshair: 'both',
@@ -31,6 +34,7 @@ export function readPreferences(storage: Pick<Storage, 'getItem'>): Preferences 
     const v = saved.extras?.volume;
     const color = (value: unknown, fallback: string) => typeof value === 'string' && parseColor(value) ? value : fallback;
     return { version: 1, config, extras: {
+      drawingTools: readDrawingTools(saved.extras?.drawingTools),
       theme: saved.extras?.theme === 'light' ? 'light' : 'dark',
       crosshair: ['both', 'vertical', 'horizontal', 'hidden'].includes(saved.extras?.crosshair) ? saved.extras.crosshair : 'both',
       volume: { visible: typeof v?.visible === 'boolean' ? v.visible : true,

@@ -12,7 +12,7 @@ test('every supported style and appearance round-trips across restart', () => {
   for (const { id } of chartStyles) {
     let saved;
     const config = { version: 1, series: { style: id }, candles: { upColor: '#123456' }, grid: { vertLines: { visible: false } }, timeScale: { timezone: 'Africa/Nairobi' } };
-    const extras = { theme: 'dark', volume: { visible: false, upColor: '#123456', downColor: '#654321', heightPct: 35 }, crosshair: 'horizontal' };
+    const extras = { ...defaultExtras, theme: 'dark', volume: { visible: false, upColor: '#123456', downColor: '#654321', heightPct: 35 }, crosshair: 'horizontal' };
     assert.equal(writePreferences({ setItem(key, value) { assert.equal(key, preferenceKey); saved = value; } }, config, extras), true);
     assert.deepEqual(readPreferences(storage(saved)), { version: 1, config, extras });
   }
@@ -64,4 +64,10 @@ test('renamed preference namespace restores existing installations and writes th
   let savedKey;
   writePreferences({ setItem(key) { savedKey = key; } }, restored.config, restored.extras);
   assert.equal(savedKey, 'deplyzeview.workspace.chart.appearance.v1');
+});
+test('drawing favorites, last-used tool and normalized bar position survive restart', () => {
+  let saved;
+  const extras = { ...defaultExtras, drawingTools: { favorites: ['ray', 'fibretracement'], visible: true, position: { x: .8, y: .3 }, lastUsed: { 'lines-channels-pitchforks': 'ray' } } };
+  writePreferences({ setItem(key, value) { saved = value; } }, { series: { style: 'candles' } }, extras);
+  assert.deepEqual(readPreferences(storage(saved)).extras, extras);
 });
