@@ -126,9 +126,7 @@ function createFootprintEngine(): SeriesDataEngine {
   };
   return {
     start(nextHost: SeriesDataEngineHost) {
-      host = nextHost; active = true;
-      const provider = host.symbol.toLowerCase().split(':')[0] ?? '';
-      venue = provider === 'binance' || provider === 'coinbase' || provider === 'hyperliquid' ? provider : activeVenue;
+      host = nextHost; active = true; venue = activeVenue;
       instrument = host.symbol.toUpperCase().split(':').pop()!.replace(/[^A-Z0-9:/_-]/g, '');
       intervalMs = intervalMilliseconds(host.timeframe);
       data.clear(); payload = { bars: [], step: rowStep, ticksPerRow };
