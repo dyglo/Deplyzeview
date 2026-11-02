@@ -10,7 +10,7 @@ The existing Binance Spot, Coinbase Exchange Spot and Hyperliquid perpetual adap
 | Narwhal | Futures root directory, cursor-paginated daily OHLC, latest quote | **Unadjusted front-month series**, not individual contracts. No expiry is invented. No volume or open interest. Free quotes are 15 minutes delayed. Intraday is explicitly rejected in this implementation, including on paid plans. |
 | FinzData (optional) | Roots, individual-contract directory and roll metadata, daily raw OHLC, volume, open interest and provider expiry when present | Historical research only, explicit `ROOT.CONTRACT`. No automatic continuous series, price adjustment or live prices. Daily trading dates use midnight UTC as a label; Eastern-time intraday bars are not implemented. Missing expiry stays unknown; estimated roll dates retain the provider's status. |
 
-Protocol tests use injected provider response fixtures, including real HTTP requests to an ephemeral local gateway. Separately, after credentials were supplied, local live acceptance passed for OANDA EUR_USD H1/M15 candles and pricing SSE, Narwhal GC daily candles and delayed quotes, and FinzData ES.ESZ26 daily candles with volume/open interest. FinzData's actual daily JSON uses a naive midnight datetime as the trading-date label; the adapter accepts that exact shape without treating arbitrary local times as UTC. The configured OANDA account lists **68 forex instruments, no metals or CFDs**; other OANDA products remain account-dependent. Production deployment, redistribution rights and connectivity from a fresh installed PC are separate checks. Do not treat an adapter as proof of universal coverage.
+Protocol tests use injected provider response fixtures, including real HTTP requests to an ephemeral local gateway. Separately, after credentials were supplied, local live acceptance passed for OANDA EUR_USD H1/M15 candles and pricing SSE, Narwhal GC daily candles and delayed quotes, and FinzData ES.ESZ26 daily candles with volume/open interest. FinzData's actual daily JSON uses a naive midnight datetime as the trading-date label; the adapter accepts that exact shape without treating arbitrary local times as UTC. The OANDA directory lists 68 forex instruments, but direct authorized endpoints also serve gold. As of 2 November 2026 the adapter verifies XAU_USD candle access and includes it in discovery (69 instruments total), with H1/M15 history and pricing-stream acceptance checks passed. A directory omission is not treated as proof that market data is unavailable; rejected gold probes do not add an instrument or interrupt forex. Production deployment, redistribution rights and connectivity from a fresh installed PC are separate checks. Do not treat an adapter as proof of universal coverage.
 
 ## Configuration
 
@@ -59,6 +59,16 @@ A fresh installation needs **no OANDA, Narwhal or FinzData keys**. It does need 
 ```json
 {"url":"https://your-backend.example","appToken":"a-unique-random-authorized-application-token"}
 ```
+
+### Windows launch fix in 0.1.1
+
+The application now persists its own access in the Windows per-user credential vault (`com.deplyzeview.desktop.market-data`) and restores `gateway.json` when it is missing. This removes dependence on a terminal's inherited environment and keeps access across ordinary app-data cleanup/reinstallation. This vault entry contains **application access only**, never OANDA/Narwhal/FinzData credentials.
+
+`npm run desktop:build` provisions this development PC after a successful Windows build by passing only the gateway URL and application token to the native executable over stdin. The executable determines its real Tauri configuration directory; Node no longer guesses that location. `npm run desktop:configure` repairs authorization from the ignored local `.env` without rebuilding. The helper never passes secrets as command-line arguments or prints them.
+
+Both `npm run desktop:dev` and direct `npm run tauri dev` prepare an ignored `src-tauri/target/development-gateway.json` before starting. Only debug builds can read that development file. Installed release builds never load `.env` or any provider credentials. Safe native diagnostics (`--gateway-status`, or the per-user `gateway-status.json`) report only configuration presence/path and errors, not the token.
+
+New Windows users or other PCs still require their own application authorization; a shared access token is never embedded in the installer. Version 0.1.1 is a desktop authorization fix and does not change the deployed provider API or enable metals/CFDs.
 
 Alternatively provision the runtime OS environment. Restrict this file to that user, keep it out of the installer and repositories, and rotate/revoke it through `MARKET_DATA_APP_TOKENS`. The runtime environment takes precedence over the file, which takes precedence over the compiled public URL. Gateway configuration is read only in Rust; it is never returned to the WebView. There is no frontend fetch permission for remote APIs and the existing CSP remains unchanged.
 
@@ -118,3 +128,7 @@ Run `npm test`, `npm run check`, `npm run build`, `cargo test --manifest-path sr
 After entering real credentials and starting the gateway, run `npm run gateway:smoke` for read-only account discovery and representative history/quote checks. This script does not place trades or print credentials. Also verify M15 OANDA, a closed session, invalid token, expired/unlisted contract, pricing SSE and exhausted quota. Confirm the exact FinzData response fields against account responses. Deploy to your hostname, provision an application token, build with that public URL, then install on a separate PC and verify the entire path. Fixture tests do not establish non-crypto live acceptance.
 
 During implementation, public live candle HTTP smoke requests to Binance BTCUSDT (1h), Coinbase BTC-USD (1h), and Hyperliquid BTC (1h) all returned HTTP 200 with nonempty data (2, 350, and 3 bars respectively). These test endpoint reachability and candle response availability, not the entire installed chart or live WebSocket lifecycle.
+
+## OANDA gold update in 0.1.2
+
+Search **Gold**, **XAUUSD**, **XAU_USD**, or **XAU/USD** under OANDA. Compact six-letter OANDA pairs normalize to the official underscore form. Gold remains OANDA midpoint metal/CFD data, not Narwhal GC futures. When the account directory omits XAU_USD, the adapter validates an authenticated real candle response before including it. Missing permissions or invalid prices leave gold unavailable without disrupting existing forex. No display precision or traded volume is invented for the supplementary directory entry. Local checks passed for ten H1 candles, ten M15 candles and an actual pricing-stream quote.

@@ -79,6 +79,30 @@ test('Narwhal cursors preserve raw front-month series and delayed freshness', as
   await assert.rejects(p.bars('narwhal','GC','15',from,to,500), /paid plan/);
   await assert.rejects(p.bars('narwhal','GCZ26','1D',from,to,500), /does not list/);
 });
+test('OANDA gold discovery verifies candle access when the account directory omits it', async () => {
+  const p = new Providers(config(), async url => url.endsWith('/instruments')
+    ? response({instruments:[{name:'EUR_USD',type:'CURRENCY',displayPrecision:5}]})
+    : response({instrument:'XAU_USD',candles:[{time:row.timestamp,mid:{o:'2500',h:'2510',l:'2490',c:'2505'},volume:17,complete:true}]}));
+  p.pace=async()=>{};
+  const gold=(await p.instruments('oanda')).find(i=>i.symbol==='XAU_USD');
+  assert.equal(gold?.assetClass,'metals');
+  assert.equal(gold?.instrumentType,'cfd');
+  assert.equal(gold?.marketDataAccess,'verified_candles');
+  assert.equal(canonical('oanda','XAUUSD'),'XAU_USD');
+  assert.equal((await p.instrument('oanda','XAU/USD')).symbol,'XAU_USD');
+  const bars=await p.bars('oanda','XAUUSD','15',from,to,500);
+  assert.equal(bars.bars[0].provider,'oanda');
+  assert.equal(bars.bars[0].symbol,'XAU_USD');
+  assert.equal(bars.bars[0].volume,null);
+});
+test('denied OANDA gold access does not add a fake instrument or break forex', async () => {
+  const p=new Providers(config(),async url=>url.endsWith('/instruments')
+    ? response({instruments:[{name:'EUR_USD',type:'CURRENCY',displayPrecision:5}]})
+    : new Response('',{status:403}));
+  p.pace=async()=>{};
+  assert.deepEqual((await p.instruments('oanda')).map(i=>i.symbol),['EUR_USD']);
+  await assert.rejects(p.instrument('oanda','XAUUSD'),/does not list/);
+});
 test('OANDA pagination excludes the exact boundary without skipping a candle', async () => {
   const p = new Providers(config(), async url => {
     if (url.endsWith('/instruments')) return response({instruments:[{name:'EUR_USD',type:'CURRENCY',displayPrecision:5}]});

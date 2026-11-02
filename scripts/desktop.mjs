@@ -1,8 +1,11 @@
 import { spawn } from 'node:child_process';
 import { loadEnvFile } from 'node:process';
 import { once } from 'node:events';
+import { prepareDevelopmentAccess, provisionDesktop } from './gateway-provision.mjs';
+import { fileURLToPath } from 'node:url';
 try { loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const mode = process.argv[2] || 'dev';
+if (mode === 'dev') await prepareDevelopmentAccess();
 if (!['dev','build'].includes(mode)) throw new Error('Expected dev or build');
 const env = { ...process.env };
 let localGateway;
@@ -37,6 +40,12 @@ for (const key of Object.keys(env)) {
   if (/^(OANDA_|NARWHAL_|FINZDATA_|MARKET_DATA_)/.test(key) || (mode === 'build' && key === 'DEPLYZEVIEW_APP_TOKEN')) delete env[key];
 }
 const child = spawn(process.execPath, ['node_modules/@tauri-apps/cli/tauri.js', mode], { stdio:'inherit', env });
-child.on('exit', code => { localGateway?.shutdown(); process.exitCode = code ?? 1; });
+child.on('exit', async code => {
+  localGateway?.shutdown(); process.exitCode = code ?? 1;
+  if (code === 0 && mode === 'build' && process.platform === 'win32' && process.env.DEPLYZEVIEW_APP_TOKEN) {
+    try { await provisionDesktop(fileURLToPath(new URL('../src-tauri/target/release/deplyzeview.exe', import.meta.url))); }
+    catch (error) { console.error(error.message); process.exitCode = 1; }
+  }
+});
 child.on('error', () => { localGateway?.shutdown(); process.exitCode = 1; });
 for (const signal of ['SIGINT','SIGTERM']) process.once(signal, () => { localGateway?.shutdown(); child.kill(); });

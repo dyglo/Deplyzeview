@@ -49,7 +49,7 @@
     { id:'binance', name:'Binance', detail:'Spot · USDT pairs', badge:'B' },
     { id:'coinbase', name:'Coinbase', detail:'Exchange · USD pairs', badge:'C', badgeClass:'coinbase-symbol' },
     { id:'hyperliquid', name:'Hyperliquid', detail:'Perpetuals · USDC-margined', badge:'H', badgeClass:'hyper-symbol' },
-    { id:'oanda', name:'OANDA', detail:'Forex · Account instruments', badge:'O' },
+    { id:'oanda', name:'OANDA', detail:'Forex · Gold', badge:'O' },
     { id:'narwhal', name:'Narwhal', detail:'Daily · Front-month futures', badge:'N' },
     { id:'finzdata', name:'FinzData', detail:'Daily · Individual futures contracts', badge:'F' },
   ];
@@ -245,7 +245,10 @@
   function chartSymbol() { return `${venueId}:${symbol}`; }
   function normalizedSymbol(input: string, provider: TradeVenue) {
     const value = input.trim().toUpperCase();
-    if (provider === 'oanda') return value.replace(/[/-]/g, '_').replace(/[^A-Z0-9_]/g, '');
+    if (provider === 'oanda') {
+      const clean = value.replace(/[/-]/g, '_').replace(/[^A-Z0-9_]/g, '');
+      return /^[A-Z]{6}$/.test(clean) ? `${clean.slice(0,3)}_${clean.slice(3)}` : clean;
+    }
     if (provider === 'narwhal') return value.replace(/[^A-Z0-9]/g, '');
     if (provider === 'finzdata') return value.replace(/[^A-Z0-9.]/g, '');
     if (provider === 'binance') return value.replace(/[^A-Z0-9]/g, '');
@@ -345,7 +348,7 @@
           <input id="symbol-input" bind:value={symbolDraft} onkeydown={(e) => { if (e.key === 'Enter') { if (isGatewayVenue(browseVenue) && filteredInstruments.length) pickInstrument(filteredInstruments[0]); else applySymbol(); } }}/>
           {#if isGatewayVenue(browseVenue)}
             {#if browseRoot}<button class="market-back" onclick={() => { symbolDraft = ''; void loadInstrumentChoices(browseVenue); }}>← All futures markets · {browseRoot}</button>{/if}
-            <div class="search-hint">{browseVenue === 'oanda' ? 'Account instruments · No unavailable markets added' : browseVenue === 'narwhal' ? 'Daily unadjusted front-month series · Quotes may be delayed' : browseRoot ? 'Choose an individual contract · Daily history' : 'Choose a futures market to browse its contracts'}</div>
+            <div class="search-hint">{browseVenue === 'oanda' ? 'Verified OANDA market data' : browseVenue === 'narwhal' ? 'Daily unadjusted front-month series · Quotes may be delayed' : browseRoot ? 'Choose an individual contract · Daily history' : 'Choose a futures market to browse its contracts'}</div>
             {#if discoveryLoading}<div class="search-hint" role="status">Loading instruments…</div>
             {:else if discoveryError}<div class="search-hint feed-error-text" role="alert">{discoveryError}</div>
             {:else}

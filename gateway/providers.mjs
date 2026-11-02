@@ -23,7 +23,8 @@ export function uniqueBars(rows, from, to, limit) {
 export const oandaGranularities = { '1':'M1', '2':'M2', '3':'M3', '4':'M4', '5':'M5', '10':'M10', '15':'M15', '30':'M30', '60':'H1', '120':'H2', '180':'H3', '240':'H4', '360':'H6', '480':'H8', '720':'H12', '1D':'D', '1W':'W', '1M':'M' };
 export function canonical(provider, symbol) {
   const value = symbol.trim().toUpperCase();
-  const normalized = provider === 'oanda' ? value.replace(/[/-]/g, '_') : value;
+  let normalized = provider === 'oanda' ? value.replace(/[/-]/g, '_') : value;
+  if (provider === 'oanda' && /^[A-Z]{6}$/.test(normalized)) normalized = `${normalized.slice(0,3)}_${normalized.slice(3)}`;
   if (!(provider === 'finzdata' ? /^[A-Z0-9]{1,10}(\.[A-Z0-9]{1,20})?$/ : /^[A-Z0-9_]{1,40}$/).test(normalized)) fail(400, 'invalid_symbol', 'Invalid provider instrument identifier');
   return normalized;
 }
@@ -110,11 +111,27 @@ export class Providers {
       if (provider === 'oanda') {
         const data = await this.request(provider, `/v3/accounts/${encodeURIComponent(this.config.accountId)}/instruments`);
         if (!Array.isArray(data.instruments)) fail(502, 'invalid_data', 'Missing OANDA instrument directory');
-        return data.instruments.map(i => ({ provider, symbol: i.name, instrumentId: i.name, name: i.displayName,
+        const instruments = data.instruments.map(i => ({ provider, symbol: i.name, instrumentId: i.name, name: i.displayName,
           assetClass: i.type === 'CURRENCY' ? 'forex' : i.type === 'METAL' ? 'metals' : 'commodity_or_index',
           instrumentType: i.type === 'CURRENCY' ? 'spot_forex' : 'cfd', providerInstrumentType: i.type,
           exchange: null, contractExpiry: null, priceSource: 'midpoint', volumeType: 'unavailable',
           quoteCurrency: i.name.split('_').at(-1), tickSize: 10 ** -i.displayPrecision, tags: i.tags ?? [], delayMs:0 }));
+        // The account's directory can omit XAU_USD even while its authorized
+        // candle/pricing endpoints serve it. Verify real data before listing it.
+        if (!instruments.some(i => i.symbol === 'XAU_USD')) {
+          try {
+            const gold = await this.request(provider, `/v3/accounts/${encodeURIComponent(this.config.accountId)}/instruments/XAU_USD/candles?granularity=H1&price=M&count=1`);
+            const latest = gold.candles?.at(-1);
+            if (gold.instrument === 'XAU_USD' && latest) {
+              candle({timestamp:latest.time,open:latest.mid?.o,high:latest.mid?.h,low:latest.mid?.l,close:latest.mid?.c}, {});
+              instruments.push({ provider, symbol:'XAU_USD', instrumentId:'XAU_USD', name:'Gold / US Dollar',
+                assetClass:'metals', instrumentType:'cfd', providerInstrumentType:'METAL', exchange:null,
+                contractExpiry:null, priceSource:'midpoint', volumeType:'unavailable', quoteCurrency:'USD',
+                tags:[], delayMs:0, listedInAccountDirectory:false, marketDataAccess:'verified_candles' });
+            }
+          } catch { /* Optional gold failure must not remove healthy forex instruments. */ }
+        }
+        return instruments;
       }
       const data = await this.request(provider, '/v1/futures');
       if (!Array.isArray(data.futures)) fail(502, 'invalid_data', 'Missing Narwhal futures directory');

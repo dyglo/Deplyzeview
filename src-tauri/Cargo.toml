@@ -1,6 +1,6 @@
 [package]
 name = "deplyzeview"
-version = "0.1.0"
+version = "0.1.2"
 description = "DeplyzeView desktop trading terminal"
 authors = ["you"]
 edition = "2021"
@@ -22,3 +22,6 @@ tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 futures-util = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
