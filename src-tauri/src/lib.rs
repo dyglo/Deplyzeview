@@ -2,6 +2,7 @@ mod app_paths;
 mod gateway_vault;
 mod market_data;
 mod remote_data;
+mod symbol_search;
 
 use tauri::Manager;
 
@@ -34,6 +35,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             remote_data::get_remote_market_data,
+            symbol_search::get_market_search_catalog,
+            symbol_search::search_market_instruments,
             market_data::subscribe_market_feed,
             market_data::get_market_bars,
             market_data::unsubscribe_market_feed,

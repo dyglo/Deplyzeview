@@ -9,20 +9,21 @@
   import { pushCustomDrawingData } from './custom-drawing-tools';
   import IndicatorPicker from './IndicatorPicker.svelte';
   import ChartAppearance from './ChartAppearance.svelte';
+  import SymbolSearch from './SymbolSearch.svelte';
+  import { fetchWatchlistQuote, type WatchlistQuote } from './watchlist-quotes';
+  import { addWatchlistItem, readWatchlist, writeWatchlist, rightPanelKey, type InstrumentSearchResult, type WatchlistItem } from './watchlist';
   import { chartStyles, isChartStyle, setPriceAppearance, type ChartStyleId } from './chart-styles';
   import { defaultExtras, readPreferences, writePreferences, type ChartExtras } from './chart-preferences';
   import { Vela, type ChartConfig } from '@luxalgo/vela';
   import { RustMarketDataProvider } from './data-provider';
-  import { invoke } from '@tauri-apps/api/core';
   import './footprint';
-  import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink, isGatewayVenue } from './footprint';
-  import { ArrowLeftRight, BarChart3, ChevronDown, ChevronRight, Eye, Minus, Settings2, Square, Undo2, Maximize2, CircleHelp, CandlestickChart, X, SlidersHorizontal } from 'lucide-svelte';
+  import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink } from './footprint';
+  import { ArrowLeftRight, BarChart3, ChevronDown, Eye, Minus, Settings2, Square, Undo2, Maximize2, CircleHelp, CandlestickChart, X, SlidersHorizontal, Bookmark, Search, Plus } from 'lucide-svelte';
   let chartHost: HTMLDivElement;
   let chartArea: HTMLElement;
   let vela: Vela | undefined;
   let symbol = 'BTCUSDT';
   let venueId: TradeVenue = 'binance';
-  let venueMenuOpen = false;
   let timeframe = '1h';
   let chartStyle: ChartStyleId = 'candles';
   let appearanceOpen = false;
@@ -34,27 +35,15 @@
   let persistenceError = false;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let venue = 'BINANCE · SPOT';
-  let symbolDraft = symbol;
-  let marketMenuOpen = false;
-  type InstrumentChoice = { symbol: string; name?: string; instrumentType: string; contractExpiry?: string | null; rollStatus?: string | null };
-  let browseVenue: TradeVenue = 'binance';
-  let browseRoot = '';
-  let instrumentChoices: InstrumentChoice[] = [];
-  let discoveryLoading = false;
-  let discoveryError = '';
-  let discoveryRequest = 0;
-  $: filteredInstruments = instrumentChoices.filter(item => {
-    const query = symbolDraft.trim().toUpperCase().replace(/[_/.-]/g, '');
-    return !query || `${item.symbol} ${item.name ?? ''}`.toUpperCase().replace(/[_/.-]/g, '').includes(query);
-  }).slice(0, 150);
-  const providerChoices: { id: TradeVenue; name: string; detail: string; badge: string; badgeClass?: string }[] = [
-    { id:'binance', name:'Binance', detail:'Spot · USDT pairs', badge:'B' },
-    { id:'coinbase', name:'Coinbase', detail:'Exchange · USD pairs', badge:'C', badgeClass:'coinbase-symbol' },
-    { id:'hyperliquid', name:'Hyperliquid', detail:'Perpetuals · USDC-margined', badge:'H', badgeClass:'hyper-symbol' },
-    { id:'oanda', name:'OANDA', detail:'Forex · Gold', badge:'O' },
-    { id:'narwhal', name:'Narwhal', detail:'Daily · Front-month futures', badge:'N' },
-    { id:'finzdata', name:'FinzData', detail:'Daily · Individual futures contracts', badge:'F' },
-  ];
+  let searchOpen = false;
+  let panelOpen = (() => { try { return typeof window !== 'undefined' && window.localStorage.getItem(rightPanelKey) === 'open'; } catch { return false; } })();
+  let watchlist: WatchlistItem[] = (() => { try { return typeof window !== 'undefined' ? readWatchlist(window.localStorage) : []; } catch { return []; } })();
+  let watchlistError = false;
+  let watchlistQuotes: Record<string, { quote?: WatchlistQuote; error?: string }> = {};
+  let watchlistQuotesLoading = false;
+  let quoteRequestId = 0;
+  let quoteRefreshActive = false;
+  let quoteRefreshPending = false;
   let styleMenuOpen = false;
   let settingsOpen = false;
   let settingsDialogPosition: { left: number; top: number } | undefined;
@@ -138,9 +127,11 @@
     let removeFeedHealth: (() => void) | undefined;
     if ('__TAURI_INTERNALS__' in window) import('@tauri-apps/api/event').then(({ listen }) => listen<FeedHealth>('feed-health', (event) => { if (event.payload.venue !== venueId || event.payload.instrument !== symbol) return; feedHealth = event.payload; status = event.payload.status === 'live' ? `Live · ${venue}` : `${event.payload.status} · ${venue}`; })).then((remove) => { removeFeedHealth = remove; });
     const timer = window.setInterval(() => clock = new Date(), 1000);
+    const quoteTimer = window.setInterval(() => { if (panelOpen) void refreshWatchlistQuotes(); }, 30_000);
+    if (panelOpen && watchlist.length) void refreshWatchlistQuotes();
     const resize = new ResizeObserver(() => chart.resize());
     resize.observe(chartHost);
-    return () => { flushPreferences(); window.removeEventListener('pagehide', flushPreferences); offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); offCustomCreated(); offCustomEdited(); offCustomRemoved(); offCustomDraft(); offCustomSelection(); removeFeedHealth?.(); clearInterval(timer); resize.disconnect(); chart.destroy(); };
+    return () => { quoteRequestId++; flushPreferences(); window.removeEventListener('pagehide', flushPreferences); offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); offCustomCreated(); offCustomEdited(); offCustomRemoved(); offCustomDraft(); offCustomSelection(); removeFeedHealth?.(); clearInterval(timer); clearInterval(quoteTimer); resize.disconnect(); chart.destroy(); };
   });
   // Share the chart overlay with the renderer's indicator legend. Measure the
   // symbol block so wrapping/resizing never requires a fixed indicator offset.
@@ -264,74 +255,80 @@
     saveTimer = setTimeout(saveAppearance, 180);
   }
   function chartSymbol() { return `${venueId}:${symbol}`; }
-  function normalizedSymbol(input: string, provider: TradeVenue) {
-    const value = input.trim().toUpperCase();
-    if (provider === 'oanda') {
-      const clean = value.replace(/[/-]/g, '_').replace(/[^A-Z0-9_]/g, '');
-      return /^[A-Z]{6}$/.test(clean) ? `${clean.slice(0,3)}_${clean.slice(3)}` : clean;
-    }
-    if (provider === 'narwhal') return value.replace(/[^A-Z0-9]/g, '');
-    if (provider === 'finzdata') return value.replace(/[^A-Z0-9.]/g, '');
-    if (provider === 'binance') return value.replace(/[^A-Z0-9]/g, '');
-    if (provider === 'coinbase') {
-      const parts = value.replace(/[^A-Z0-9-]/g, '').split('-').filter(Boolean);
-      if (parts.length > 1) return `${parts[0]}-${parts.slice(1).join('')}`;
-      for (const quote of ['USDT', 'USDC', 'USD', 'EUR', 'GBP', 'BTC']) if (value.endsWith(quote) && value.length > quote.length) return `${value.slice(0, -quote.length)}-${quote}`;
-      return `${value}-USD`;
-    }
-    return value.replace(/[^A-Z0-9:]/g, '').replace(/\.P$/, '');
+  function providerTitle(provider: string) {
+    return provider === 'binance' ? 'BINANCE · SPOT' : provider === 'coinbase' ? 'COINBASE · EXCHANGE' : provider === 'hyperliquid' ? 'HYPERLIQUID · PERP' : provider === 'oanda' ? 'OANDA · FX / CFD' : provider === 'narwhal' ? 'NARWHAL · FRONT MONTH' : 'FINZDATA · FUTURES';
   }
-  function selectVenue(next: TradeVenue) {
-    browseVenue = next;
-    if (isGatewayVenue(next)) {
-      marketMenuOpen = true; venueMenuOpen = false; symbolDraft = '';
-      void loadInstrumentChoices(next);
-      return;
-    }
-    venueId = next;
-    venue = next === 'binance' ? 'BINANCE · SPOT' : next === 'coinbase' ? 'COINBASE · EXCHANGE' : 'HYPERLIQUID · PERP';
-    symbol = next === 'binance' ? 'BTCUSDT' : next === 'coinbase' ? 'BTC-USD' : 'BTC';
-    setTradeVenue(next);
-    status = `Live · ${venue}`;
-    venueMenuOpen = false;
-    if (vela) void vela.setMarket({ symbol: chartSymbol(), timeframe: timeframeCode(timeframe) });
-  }
-  async function loadInstrumentChoices(provider: TradeVenue, root = '') {
-    const request = ++discoveryRequest;
-    browseRoot = root; instrumentChoices = []; discoveryError = ''; discoveryLoading = true;
-    try {
-      if (!('__TAURI_INTERNALS__' in window)) throw new Error('Open the desktop app to browse configured market data.');
-      const choices = await invoke<InstrumentChoice[]>('get_remote_market_data', { provider, action: root ? 'contracts' : 'instruments', instrument: root || null });
-      if (request !== discoveryRequest) return;
-      instrumentChoices = [...choices].sort((a,b) => Number(!!b.rollStatus?.startsWith('current')) - Number(!!a.rollStatus?.startsWith('current')) || a.symbol.localeCompare(b.symbol));
-    } catch (error) {
-      if (request === discoveryRequest) discoveryError = String(error);
-    } finally { if (request === discoveryRequest) discoveryLoading = false; }
-  }
-  function openMarketSearch() {
-    marketMenuOpen = !marketMenuOpen; venueMenuOpen = false;
-    browseVenue = venueId; symbolDraft = isGatewayVenue(venueId) ? '' : symbol;
-    if (marketMenuOpen && isGatewayVenue(venueId)) void loadInstrumentChoices(venueId);
-  }
-  function pickInstrument(item: InstrumentChoice) {
-    if (item.instrumentType === 'futures_root') {
-      symbolDraft = ''; void loadInstrumentChoices(browseVenue, item.symbol); return;
-    }
-    symbolDraft = item.symbol;
-    applySymbol();
-  }
-  function applySymbol() {
-    const qualified = /^(oanda|narwhal|finzdata|binance|coinbase|hyperliquid):(.+)$/i.exec(symbolDraft.trim());
-    const provider = qualified ? qualified[1].toLowerCase() as TradeVenue : browseVenue;
-    const next = normalizedSymbol(qualified ? qualified[2] : symbolDraft, provider);
-    if (!next) return;
+  function selectInstrument(item: InstrumentSearchResult) {
+    const provider = item.provider as TradeVenue;
     venueId = provider;
-    venue = provider === 'finzdata' ? 'FINZDATA · FUTURES' : provider === 'oanda' ? 'OANDA · FX / CFD' : provider === 'narwhal' ? 'NARWHAL · FRONT MONTH' : provider === 'binance' ? 'BINANCE · SPOT' : provider === 'coinbase' ? 'COINBASE · EXCHANGE' : 'HYPERLIQUID · PERP';
+    venue = providerTitle(item.provider);
     setTradeVenue(provider);
     if (provider === 'narwhal' || provider === 'finzdata') timeframe = '1D';
-    symbol = next; marketMenuOpen = false; status = `Loading · ${venue}`;
-    if (vela) void vela.setMarket({ symbol: chartSymbol(), timeframe: timeframeCode(timeframe) });
+    symbol = item.symbol;
+    searchOpen = false;
+    feedHealth = undefined;
+    status = `Loading · ${venue}`;
+    if (vela) void Promise.resolve(vela.setMarket({ symbol: chartSymbol(), timeframe: timeframeCode(timeframe) })).catch(error => { status = `Unable to load ${item.symbol} · ${String(error)}`; });
   }
+  function saveWatchlist(items: WatchlistItem[]) {
+    watchlist = items;
+    try { watchlistError = !writeWatchlist(window.localStorage, items); } catch { watchlistError = true; }
+  }
+  async function refreshWatchlistQuotes() {
+    if (!panelOpen || !watchlist.length) return;
+    if (quoteRefreshActive) { quoteRefreshPending = true; return; }
+    quoteRefreshActive = true;
+    const requestId = ++quoteRequestId;
+    const items = [...watchlist];
+    watchlistQuotesLoading = true;
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(3, items.length) }, async () => {
+      while (cursor < items.length) {
+        const item = items[cursor++];
+        try {
+          const quote = await fetchWatchlistQuote(item);
+          if (requestId !== quoteRequestId) return;
+          if (quote) watchlistQuotes = { ...watchlistQuotes, [item.identity]: { quote } };
+          else watchlistQuotes = { ...watchlistQuotes, [item.identity]: { error: 'No recent daily bars were returned' } };
+        } catch (error) {
+          if (requestId === quoteRequestId) watchlistQuotes = { ...watchlistQuotes, [item.identity]: { error: String(error) } };
+        }
+      }
+    }));
+    if (requestId === quoteRequestId) watchlistQuotesLoading = false;
+    quoteRefreshActive = false;
+    if (quoteRefreshPending) {
+      quoteRefreshPending = false;
+      if (panelOpen && watchlist.length) void refreshWatchlistQuotes();
+    }
+  }
+  function addToWatchlist(item: InstrumentSearchResult) {
+    const updated = addWatchlistItem(watchlist, item);
+    if (updated === watchlist) return;
+    saveWatchlist(updated);
+    if (panelOpen) void refreshWatchlistQuotes();
+  }
+  function removeFromWatchlist(identity: string) {
+    quoteRequestId++;
+    watchlistQuotes = Object.fromEntries(Object.entries(watchlistQuotes).filter(([key]) => key !== identity));
+    saveWatchlist(watchlist.filter(item => item.identity !== identity));
+    if (panelOpen) void refreshWatchlistQuotes();
+    if (!watchlist.length) { quoteRefreshPending = false; watchlistQuotesLoading = false; }
+  }
+  function toggleWorkspacePanel() {
+    panelOpen = !panelOpen;
+    try { window.localStorage.setItem(rightPanelKey, panelOpen ? 'open' : 'closed'); } catch { watchlistError = true; }
+    if (panelOpen) void refreshWatchlistQuotes();
+    else { quoteRequestId++; quoteRefreshPending = false; watchlistQuotesLoading = false; }
+  }
+  function formatWatchlistPrice(value: number) { return new Intl.NumberFormat(undefined, { maximumSignificantDigits: 8 }).format(value); }
+  function formatWatchlistChange(value: number | null, currency: string | null) {
+    if (value === null) return '—';
+    const amount = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 6 }).format(Math.abs(value));
+    return `${value >= 0 ? '+' : '−'}${amount}${currency ? ` ${currency}` : ''}`;
+  }
+  function formatWatchlistPercent(value: number | null) { return value === null ? '—' : `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}%`; }
+  function watchlistChangeTone(value: number | null | undefined) { return value == null ? 'change-neutral' : value >= 0 ? 'change-positive' : 'change-negative'; }
   function coverageText() {
     if (!feedHealth?.coverageStartMs || !feedHealth?.coverageEndMs) return 'Coverage not available yet';
     const fmt = (time: number) => new Date(time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: timezone });
@@ -353,48 +350,47 @@
   <header class="titlebar" data-tauri-drag-region><div class="brand-mark" title="DeplyzeView"><img src={appIcon} alt="DeplyzeView" draggable="false"/></div><span class="brand-divider"></span><span class="workspace-label">Chart</span><div class="window-controls"><button aria-label="Minimize" onclick={() => windowAction('minimize')}><Minus size={12}/></button><button aria-label="Maximize" onclick={() => windowAction('maximize')}><Square size={10}/></button><button class="close" aria-label="Close" onclick={() => windowAction('close')}><X size={12}/></button></div></header>
   <nav class="topbar">
     <div class="market-selector">
-      <button class="symbol-button" onclick={openMarketSearch}><span class="exchange">{venue}</span><span class="symbol-line">{symbol}<ChevronDown size={11}/></span></button>
-      <button class="venue-trigger" aria-label="Choose venue" onclick={() => { venueMenuOpen = !venueMenuOpen; marketMenuOpen = false; }}><ChevronDown size={10}/></button>
-      {#if venueMenuOpen}
-        <div class="venue-popover"><span class="venue-heading">MARKET DATA PROVIDER</span>
-          {#each providerChoices as provider}
-            <button class:venue-active={venueId === provider.id} onclick={() => selectVenue(provider.id)}><span class="venue-symbol {provider.badgeClass ?? ''}">{provider.badge}</span><span><strong>{provider.name}</strong><small>{provider.detail}</small></span>{#if venueId === provider.id}<span class="venue-check">●</span>{/if}</button>
-          {/each}
-          <div class="venue-disclaimer">Availability follows each provider and your account permissions.</div>
-        </div>
-      {/if}
-      {#if marketMenuOpen}
-        <div class="symbol-popover">
-          <label for="symbol-input">Search market{isGatewayVenue(browseVenue) ? ` · ${providerChoices.find(p => p.id === browseVenue)?.name}` : ''}</label>
-          <input id="symbol-input" bind:value={symbolDraft} onkeydown={(e) => { if (e.key === 'Enter') { if (isGatewayVenue(browseVenue) && filteredInstruments.length) pickInstrument(filteredInstruments[0]); else applySymbol(); } }}/>
-          {#if isGatewayVenue(browseVenue)}
-            {#if browseRoot}<button class="market-back" onclick={() => { symbolDraft = ''; void loadInstrumentChoices(browseVenue); }}>← All futures markets · {browseRoot}</button>{/if}
-            <div class="search-hint">{browseVenue === 'oanda' ? 'Verified OANDA market data' : browseVenue === 'narwhal' ? 'Daily unadjusted front-month series · Quotes may be delayed' : browseRoot ? 'Choose an individual contract · Daily history' : 'Choose a futures market to browse its contracts'}</div>
-            {#if discoveryLoading}<div class="search-hint" role="status">Loading instruments…</div>
-            {:else if discoveryError}<div class="search-hint feed-error-text" role="alert">{discoveryError}</div>
-            {:else}
-              <div class="market-results" aria-label="Available instruments">
-                {#each filteredInstruments as item}
-                  <button class="market-result" onclick={() => pickInstrument(item)}><strong>{item.symbol}</strong><small>{item.name ?? item.instrumentType}{item.rollStatus ? ` · ${item.rollStatus}` : ''}{item.contractExpiry ? ` · Expiry ${item.contractExpiry}` : ''}</small></button>
-                {/each}
-                {#if !filteredInstruments.length}<div class="search-hint">No matching instruments for this provider.</div>{/if}
-              </div>
-            {/if}
-          {:else}<div class="search-hint">{browseVenue === 'coinbase' ? 'BTC-USD, ETH-USD, SOL-USD' : browseVenue === 'hyperliquid' ? 'BTC, ETH, SOL' : 'BTCUSDT, ETHUSDT, SOLUSDT'}</div>{/if}
-          <button class="apply-market" onclick={() => { if (isGatewayVenue(browseVenue) && filteredInstruments.length) pickInstrument(filteredInstruments[0]); else applySymbol(); }}>Open market <ChevronRight size={13}/></button>
-        </div>
-      {/if}
+      <button class="symbol-button" aria-label="Search markets, current {symbol} from {venue}" onclick={() => searchOpen = true}><span class="exchange">{venue}</span><span class="symbol-line">{symbol}<Search size={11}/></span></button>
     </div>
     <div class="top-divider"></div><div class="timeframes">{#each intervals as interval}<button class:chosen={timeframe === interval} onclick={() => chooseTimeframe(interval)}>{interval}</button>{/each}<button class="more-time" aria-label="More intervals"><ChevronDown size={11}/></button></div>
     <div class="top-divider"></div><div class="style-picker"><button class="chart-style" aria-label="Chart style" aria-expanded={styleMenuOpen} class:style-selected={chartStyle !== 'candles'} onclick={() => styleMenuOpen = !styleMenuOpen} onkeydown={(e) => { if (e.key === 'Escape') styleMenuOpen = false; }}><CandlestickChart size={14}/><span>{chartStyles.find(style => style.id === chartStyle)?.label}</span><ChevronDown size={10}/></button>{#if styleMenuOpen}<div class="style-menu" role="group" aria-label="Chart styles">{#each chartStyles as style}<button class:menu-selected={chartStyle === style.id} aria-pressed={chartStyle === style.id} onclick={() => chooseStyle(style.id)}><CandlestickChart size={14}/>{style.label}{#if chartStyle === style.id}<span class="new-tag">SELECTED</span>{/if}</button>{/each}<div class="style-menu-note">Appearance controls in Chart settings</div></div>{/if}</div>
-    <div class="top-spacer"></div>{#if chartStyle === 'footprint'}<button class="top-action" onclick={() => { indicatorsOpen = false; appearanceOpen = false; settingsOpen = true; }}><SlidersHorizontal size={13}/> Footprint</button>{/if}<button class="top-action" aria-label="Indicators" aria-expanded={indicatorsOpen} onclick={() => { appearanceOpen = false; settingsOpen = false; marketMenuOpen = false; venueMenuOpen = false; styleMenuOpen = false; vela?.renderer.closeDialogs(); indicatorsOpen = !indicatorsOpen; }}><SlidersHorizontal size={13}/> Indicators</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action"><Eye size={13}/> View as</button><button class="top-icon" aria-label="Chart settings" onclick={() => { indicatorsOpen = false; settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
+    <div class="top-spacer"></div>{#if chartStyle === 'footprint'}<button class="top-action" onclick={() => { indicatorsOpen = false; appearanceOpen = false; settingsOpen = true; }}><SlidersHorizontal size={13}/> Footprint</button>{/if}<button class="top-action" aria-label="Indicators" aria-expanded={indicatorsOpen} onclick={() => { appearanceOpen = false; settingsOpen = false; styleMenuOpen = false; vela?.renderer.closeDialogs(); indicatorsOpen = !indicatorsOpen; }}><SlidersHorizontal size={13}/> Indicators</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action"><Eye size={13}/> View as</button><button class="top-icon" aria-label="Chart settings" onclick={() => { indicatorsOpen = false; settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
   </nav>
-  <main class="chart-layout">{#if vela && chartArea}<ToolRail chart={vela} groups={drawingGroups} bind:prefs={extras.drawingTools} onClear={clearAllDrawings} onLockAll={setAllDrawingsLocked} onHideAll={setAllDrawingsHidden} modeOff={null} disabled={appearanceOpen || settingsOpen || indicatorsOpen}/>{:else}<aside class="drawing-toolbar" aria-label="Drawing tools"></aside>{/if}
+  <main class="chart-layout">{#if vela && chartArea}<ToolRail chart={vela} groups={drawingGroups} bind:prefs={extras.drawingTools} onClear={clearAllDrawings} onLockAll={setAllDrawingsLocked} onHideAll={setAllDrawingsHidden} modeOff={null} disabled={appearanceOpen || settingsOpen || indicatorsOpen || searchOpen}/>{:else}<aside class="drawing-toolbar" aria-label="Drawing tools"></aside>{/if}
     <section class="chart-area" bind:this={chartArea}><div class="chart-legend" use:measureSymbolLegend><div class="legend-main"><span class="pair-name">{symbol}</span></div>{#if chartStyle === 'footprint'}<div class="legend-sub">Bid × Ask</div>{/if}</div><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market chart"></div></div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
       {#if indicatorsOpen && vela}<IndicatorPicker chart={vela} close={() => indicatorsOpen = false}/>{/if}
       {#if appearanceOpen && appearance}<ChartAppearance config={appearance} {extras} {persistenceError} patch={applyAppearance} changeExtras={applyExtras} {chooseStyle} reset={resetAppearance} close={() => appearanceOpen = false}/>{/if}
       {#if settingsOpen}<div class="settings-scrim" role="presentation" onclick={() => settingsOpen = false}></div><dialog open class="settings-dialog" aria-modal="true" aria-labelledby="settings-title" style={settingsDialogPosition ? `left:${settingsDialogPosition.left}px;top:${settingsDialogPosition.top}px;transform:none` : undefined}><header class="dialog-titlebar" role="toolbar" aria-label="Move settings dialog" tabindex="0" onkeydown={nudgeSettingsDialog} onpointerdown={startSettingsDialogDrag} onpointermove={moveSettingsDialog} onpointerup={endSettingsDialogDrag} onpointercancel={endSettingsDialogDrag}><div><span class="dialog-kicker">CHART SETTINGS</span><h2 id="settings-title">Volume Footprint</h2></div><button class="dialog-close" aria-label="Close settings" onclick={() => settingsOpen = false}><X size={14}/></button></header><nav class="dialog-tabs">{#each tabs as tab}<button class:tab-active={settingsTab === tab} onclick={() => settingsTab = tab}>{tab}</button>{/each}</nav><div class="dialog-content"><div class="dialog-section-label">{settingsTab === 'General' ? 'GENERAL' : settingsTab.toUpperCase()}</div>{#if settingsTab === 'General'}<div class="setting-row"><div class="setting-name"><strong>Unit</strong><small>Volume denomination</small></div><div class="segmented"><button class:segment-active={footprintUnit === 'quote'} onclick={() => chooseUnit('quote')}>{feedHealth?.quoteCurrency ?? 'Quote'}</button><button class:segment-active={footprintUnit === 'coin'} onclick={() => chooseUnit('coin')}>Coin</button></div></div><div class="setting-row"><div class="setting-name"><strong>Ticks per bar</strong><small>Price levels per footprint row</small></div><div class="stepper"><button aria-label="Decrease ticks" onclick={() => changeTicks(tickCount - 1)}>−</button><input type="number" min="1" max="100" bind:value={tickCount} oninput={() => changeTicks(tickCount)}/><span>ticks</span><button aria-label="Increase ticks" onclick={() => changeTicks(tickCount + 1)}>+</button></div></div><div class="setting-row mode-row"><div class="setting-name"><strong>Display mode</strong><small>How trade volume is rendered</small></div><div class="mode-options">{#each modes as item}<button class:mode-active={footprintMode === item.id} onclick={() => chooseMode(item.id)}><span>{item.name}</span><small>{item.hint}</small>{#if footprintMode === item.id}<span class="selected-dot"></span>{/if}</button>{/each}</div></div><div class="data-note"><span class="live-indicator" class:health-error={feedHealth?.status === 'error' || (feedHealth?.gapsDetected ?? 0) > 0}></span><span><strong>{feedHealth?.status === 'live' ? 'Live trade feed' : feedHealth?.status === 'error' ? 'Feed needs attention' : 'Market data service'}</strong><small>{feedHealth ? `${feedHealth.tradesStored.toLocaleString()} stored trades · ${feedHealth.gapDetectionAvailable ? `${feedHealth.gapsDetected} gap(s)` : 'gap detection unavailable'}` : 'Waiting for Rust feed status…'}</small><small>{coverageText()}</small><small>{feedHealth?.historyNote ?? `${venue} public trade history`}</small>{#if feedHealth?.lastError}<small class="feed-error-text">{feedHealth.lastError}</small>{/if}</span></div>{:else}<div class="settings-placeholder"><div class="settings-placeholder-icon"><Settings2 size={17}/></div><strong>{settingsTab} settings</strong><span>Configure {settingsTab.toLowerCase()} visualization for the footprint chart.</span><div class="coming-chip">AVAILABLE IN THIS BUILD</div></div>{/if}</div><footer class="dialog-footer"><span class="footer-hint">Settings apply to the active chart</span><button class="done-button" onclick={() => settingsOpen = false}>Done</button></footer></dialog>{/if}
     </section>
+    <div class="workspace-dock">
+      {#if panelOpen}
+        <section class="watchlist-panel" aria-labelledby="watchlist-title">
+          <header class="watchlist-header"><div><h2 id="watchlist-title">Watchlist</h2><small>{watchlist.length} saved{watchlist.length ? ` · ${watchlistQuotesLoading ? 'Updating' : '30s refresh'}` : ''}</small></div><button class="watchlist-add" aria-label="Add symbol to watchlist" title="Add symbol" onclick={() => searchOpen = true}><Plus size={16}/></button></header>
+          <div class="watchlist-columns"><span>Instrument</span><span>Last</span><span>Change</span></div>
+          {#if watchlist.length}
+            <div class="watchlist-items" aria-label="Saved instruments">
+              {#each watchlist as item (item.identity)}
+                {@const snapshot = watchlistQuotes[item.identity]}
+                {@const quote = snapshot?.quote}
+                <div class="watchlist-row">
+                  <button class="watchlist-select" aria-label={`Load ${item.symbol} from ${item.provider}`} onclick={() => selectInstrument(item)}><span class="watchlist-symbol">{item.symbol}</span><span class="watchlist-name">{item.name}</span><span class="watchlist-meta">{item.provider} · {item.instrumentType.replace(/_/g, ' ')}{item.contractExpiry ? ` · ${item.contractExpiry}` : ''}</span></button>
+                  <div class="watchlist-last" title={quote ? `${quote.freshness} · ${new Date(quote.asOf).toLocaleString()}` : snapshot?.error ?? 'Waiting for a provider snapshot'}><strong>{quote ? formatWatchlistPrice(quote.price) : '—'}</strong><small>{quote?.quoteCurrency ?? ''}</small></div>
+                  <div class={`watchlist-change ${watchlistChangeTone(quote?.changePercent ?? null)}`} title={quote?.freshness ?? snapshot?.error ?? 'Change vs previous daily close'}><strong>{formatWatchlistPercent(quote?.changePercent ?? null)}</strong><small>{formatWatchlistChange(quote?.change ?? null, quote?.quoteCurrency ?? null)}</small></div>
+                  <button class="watchlist-remove" aria-label={`Remove ${item.symbol} from watchlist`} title="Remove" onclick={() => removeFromWatchlist(item.identity)}><X size={13}/></button>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <div class="watchlist-empty"><Bookmark size={21}/><strong>Your watchlist is empty</strong><span>Add instruments from unified search to keep them here.</span><button onclick={() => searchOpen = true}><Plus size={13}/> Add symbol</button></div>
+          {/if}
+          {#if watchlistError}<div class="watchlist-storage-error" role="status">Changes may not persist because local storage is unavailable.</div>{/if}
+        </section>
+      {/if}
+      <nav class="workspace-rail" aria-label="Workspace panels">
+        <button class:rail-active={panelOpen} aria-label={panelOpen ? 'Close watchlist panel' : 'Open watchlist panel'} title="Watchlist" aria-pressed={panelOpen} onclick={toggleWorkspacePanel}><Bookmark size={17}/></button>
+      </nav>
+    </div>
   </main>
+  {#if searchOpen}<SymbolSearch close={() => searchOpen = false} select={selectInstrument} add={addToWatchlist} isSaved={(item) => watchlist.some(saved => saved.identity === item.identity)}/>{/if}
   <footer class="statusbar"><div class="range-options"><button onclick={() => vela?.setVisibleRangePreset('1D')}>1D</button><button onclick={() => vela?.setVisibleRangePreset('1W')}>1W</button><button onclick={() => vela?.setVisibleRangePreset('1M')}>1M</button><button onclick={() => vela?.setVisibleRangePreset('3M')}>3M</button><button onclick={() => vela?.setVisibleRangePreset('6M')}>6M</button><button onclick={() => vela?.setVisibleRangePreset('1Y')}>1Y</button><button onclick={() => vela?.setVisibleRangePreset('ALL')}>ALL</button><span class="status-divider"></span><button class="calendar-button"><BarChart3 size={12}/></button></div><div class="connection"><span class:connected={status.startsWith('Live')} class="connection-dot"></span>{status}</div><div class="clock">{formatClock(clock, timezone)}</div><select class="timezone-select" aria-label="Chart time zone" title="Chart and clock time zone" value={timezone} onchange={(event) => applyAppearance({ timeScale: { timezone: event.currentTarget.value } })}>{#each timezoneChoices(timezone) as zone}<option value={zone.value}>{zone.label}</option>{/each}</select><button class="fit-button"><Maximize2 size={12}/> Fit</button><button class="help-button"><CircleHelp size={13}/></button></footer>
 </div>

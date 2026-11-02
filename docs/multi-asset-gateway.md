@@ -2,7 +2,7 @@
 
 ## Implementation and verification status
 
-The existing Binance Spot, Coinbase Exchange Spot and Hyperliquid perpetual adapters still run directly inside Rust. Their connections, SQLite trades and footprint calculations are unchanged. New sources use the same Vela provider port and OHLCV chart series, with requests carried by a Rust command to a separately deployed Node.js 24 gateway. The existing venue menu and symbol popover now browse provider directories, as requested during local review; chart layout, toolbars, drawings and indicator settings retain their design. No execution endpoints, account-management functionality or separate chart engine was added. Typed qualified symbols remain supported.
+The existing Binance Spot, Coinbase Exchange Spot and Hyperliquid perpetual adapters still run directly inside Rust. Their connections, SQLite trades and footprint calculations are unchanged. New sources use the same Vela provider port and OHLCV chart series, with requests carried by a Rust command to a separately deployed Node.js 24 gateway. Unified symbol search combines actual crypto exchange listings with the configured gateway provider directories, normalizes source identity and keeps provider failures isolated. The right-side watchlist stores only explicitly added instruments. Chart layout, toolbars, drawings and indicator settings retain their existing behavior. No execution endpoints, account-management functionality or separate chart engine was added. Typed qualified symbols remain supported.
 
 | Provider | Implemented scope | Restrictions |
 |---|---|---|
@@ -78,14 +78,14 @@ Render deployment is prepared separately; see [the reviewable Render service pla
 
 ## Existing chart integration
 
-Use **Choose venue** beside the current symbol, select OANDA, Narwhal or FinzData, then search/click a discovered instrument. OANDA lists only instruments available to the configured account. FinzData first lists futures roots, then individual contracts, with the provider-identified current contract first. Selecting a futures instrument uses the supported daily timeframe. `npm run desktop:dev` starts the credential-owning loopback gateway automatically; browser-only `npm run dev` cannot call Tauri commands.
+Use the symbol control or **Add symbol** in the right-side watchlist to open unified symbol search; selecting a provider is not required. The dialog preloads actual searchable provider catalogs and filters them locally on each keystroke, while debounced unified lookups add query-specific candidates such as individual futures contracts. The Tauri search command queries Binance, Coinbase Exchange and Hyperliquid instrument directories together with the OANDA, Narwhal and FinzData catalogs through the authenticated gateway. It returns partial results when a source is unavailable and labels each instrument with its provider and relevant type/exchange/expiry/freshness metadata. OANDA lists only instruments available to the configured account. FinzData contract results are discovered under matching futures roots and retain each listed expiry; no continuous-contract substitution is made. Selecting a futures instrument uses the supported daily timeframe. A result is added to the watchlist only when its explicit add control is used. The watchlist polls provider-backed daily bars for price and previous-close changes; Narwhal uses its delayed quote endpoint, while FinzData remains historical-only. `npm run desktop:dev` starts the credential-owning loopback gateway automatically; browser-only `npm run dev` cannot call Tauri commands.
 
 The same input also accepts qualified identifiers:
 
 - `OANDA:EUR_USD` (also `OANDA:EUR/USD`), `OANDA:XAU_USD`, `OANDA:XAG_USD`; other exact account identifiers are discoverable through the gateway.
 - `NARWHAL:GC`, `NARWHAL:SI`, `NARWHAL:CL`, `NARWHAL:ES`, `NARWHAL:6E`: select **1D**. A root is a rolling series, never a dated contract.
 - `FINZDATA:ES.ESZ26`: select **1D**. This is a syntax example, not a guarantee that a contract exists or your plan includes it; discover contracts first.
-- Existing crypto venue buttons and symbols retain their behavior.
+- Binance spot, Coinbase Exchange spot and Hyperliquid perpetual symbols are returned as distinct provider-specific alternatives by unified search.
 
 Unavailable timeframes/symbols fail explicitly. No source fallback, interpolated candles, calendar-gap filling, resampled quote bars or synthetic trades are generated. Provider metadata identifies instrument type, exchange, contract, expiry, price source, frequency, retrieval time and delay/freshness. The Vela engine consumes the same OHLCV fields for every provider. Open interest and extra metadata remain available in normalized gateway responses; no new indicator/UI was added for them.
 
