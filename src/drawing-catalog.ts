@@ -1,6 +1,18 @@
-import { defaultToolbar, type DrawingTypeKey } from '@luxalgo/vela';
+import { defaultToolbar, drawingTypes, type DrawingTypeKey } from '@luxalgo/vela';
+import { isCustomDrawingType } from './custom-drawing-tools.ts';
 
-export const drawingGroups = defaultToolbar().groups;
+const customGroupTargets: Record<string, string> = {
+  lines: 'lines-channels-pitchforks', patterns: 'patterns-waves-harmonics', measure: 'measurements',
+  shapes: 'brushes-arrows-shapes', annotations: 'text'
+};
+const customTools = drawingTypes().filter(tool => isCustomDrawingType(tool.type));
+export const drawingGroups = defaultToolbar().groups.map(group => ({
+  ...group,
+  tools: [...group.tools, ...customTools.filter(tool => customGroupTargets[tool.group] === group.id && !group.tools.some(existing => existing.type === tool.type))
+    .map(tool => ({ type: tool.type as DrawingTypeKey, label: tool.label, icon: tool.icon }))],
+  sections: [...(group.sections ?? []), ...customTools.filter(tool => customGroupTargets[tool.group] === group.id && !group.tools.some(existing => existing.type === tool.type))
+    .map(tool => ({ label: 'Custom', tools: [{ type: tool.type as DrawingTypeKey, label: tool.label, icon: tool.icon }] }))]
+}));
 export const drawingCatalog = new Map(drawingGroups.flatMap(group => group.tools.map(tool => [tool.type, tool] as const)));
 export type DrawingToolPreferences = {
   favorites: DrawingTypeKey[];
