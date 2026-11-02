@@ -584,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "deplyzeview"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "futures-util",
@@ -596,6 +596,7 @@ dependencies = [
  "tauri-build",
  "tokio",
  "tokio-tungstenite",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

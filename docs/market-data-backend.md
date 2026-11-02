@@ -1,5 +1,7 @@
 # Market-data backend
 
+The local crypto service below is preserved. Additional OANDA, Narwhal and optional FinzData adapters use a separate credential-owning gateway through the Rust command boundary; see [multi-asset configuration, limitations and deployment](multi-asset-gateway.md). Coverage statements below describe the original direct crypto adapters, not the gateway additions. Neither live provider access nor production deployment is implied by the adapter implementation.
+
 ## Current architecture
 
 The desktop renderer does not open exchange REST or WebSocket connections. Vela requests candle history through a Rust Tauri command; live candle updates and footprint updates are delivered as Tauri events from the Rust process. The Rust backend owns venue adapters, normalization, reconnect loops, local persistence, deduplication, gap accounting, and price-row aggregation.

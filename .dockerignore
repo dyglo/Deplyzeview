@@ -1,0 +1,4 @@
+**
+!gateway/
+!gateway/*.mjs
+!gateway/Dockerfile

@@ -38,6 +38,8 @@ export async function startDevServer({ createServer, probe = probeDeplyzeviewSer
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
+    const { prepareDevelopmentAccess } = await import('./gateway-provision.mjs');
+    await prepareDevelopmentAccess();
     const server = await startDevServer();
     console.log(`[deplyzeview] ${server.reused ? 'Reusing' : 'Started'} DeplyzeView dev server at http://${devHost}:${devPort}`);
     // Keep the Tauri hook alive even when it attaches to an existing server.

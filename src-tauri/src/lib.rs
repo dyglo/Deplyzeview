@@ -1,5 +1,7 @@
 mod app_paths;
+mod gateway_vault;
 mod market_data;
+mod remote_data;
 
 use tauri::Manager;
 
@@ -7,6 +9,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            remote_data::startup(app.handle());
             let data_dir =
                 app_paths::storage_directory(app.path().app_data_dir()?, "market-data.sqlite3");
             std::fs::create_dir_all(&data_dir)?;
@@ -30,6 +33,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            remote_data::get_remote_market_data,
             market_data::subscribe_market_feed,
             market_data::get_market_bars,
             market_data::unsubscribe_market_feed,
