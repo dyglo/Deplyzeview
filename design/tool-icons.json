@@ -1,0 +1,542 @@
+{
+ "Lines": [
+  {
+   "section": "Lines",
+   "label": "Trendline",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M9.4 18.6L18.6 9.4\"/><circle cx=\"8\" cy=\"20\" r=\"2\"/><circle cx=\"20\" cy=\"8\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Lines",
+   "label": "Ray<span class=\"hp\">?",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M9.4 18.6l4.2-4.2M16.4 11.6L24 4\"/><circle cx=\"8\" cy=\"20\" r=\"2\"/><circle cx=\"15\" cy=\"13\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Lines",
+   "label": "Info line",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M9.4 18.6L18.6 9.4\"/><rect x=\"4.5\" y=\"4.5\" width=\"9\" height=\"5\" rx=\"1\"/><circle cx=\"8\" cy=\"20\" r=\"2\"/><circle cx=\"20\" cy=\"8\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Lines",
+   "label": "Extended line",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 24l5.6-5.6M12.4 15.6l3.2-3.2M18.4 9.6L24 4\"/><circle cx=\"11\" cy=\"17\" r=\"2\"/><circle cx=\"17\" cy=\"11\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Lines",
+   "label": "Trend angle",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M8 21h13M8 21L19 9.6M14 21a6 6 0 0 0-1.8-4.2\"/><circle cx=\"8\" cy=\"21\" r=\"1.8\"/><circle cx=\"20\" cy=\"8.5\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Lines",
+   "label": "Horizontal line",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 14h8M16 14h8\"/><circle cx=\"14\" cy=\"14\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Lines",
+   "label": "Horizontal ray",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><circle cx=\"6\" cy=\"14\" r=\"2\"/><path d=\"M8 14h16\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Lines",
+   "label": "Vertical line",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 4v8M14 16v8\"/><circle cx=\"14\" cy=\"14\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Lines",
+   "label": "Crossline",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 4v8M14 16v8M4 14h8M16 14h8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Channels",
+   "label": "Parallel channel",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M9.4 18.6L18.6 9.4M10 24l12-12\"/><circle cx=\"8\" cy=\"20\" r=\"2\"/><circle cx=\"20\" cy=\"8\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Channels",
+   "label": "Regression trend",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 11l17-6v11L5 22z\"/><path d=\"M5 16.5l17-5.5\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Channels",
+   "label": "Flat top/bottom",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M10 8h8M9.2 20.4L18.8 9.6\"/><circle cx=\"8\" cy=\"8\" r=\"2\"/><circle cx=\"20\" cy=\"8\" r=\"2\"/><circle cx=\"8\" cy=\"22\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Channels",
+   "label": "Disjoint channel",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M10 8l8-1.6M10 22l8-1.6M8 10v10\"/><circle cx=\"8\" cy=\"8\" r=\"2\"/><circle cx=\"20\" cy=\"6\" r=\"2\"/><circle cx=\"8\" cy=\"22\" r=\"2\"/><circle cx=\"20\" cy=\"20\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Pitchforks",
+   "label": "Pitchfork",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 23L20 8M9 23l13-13M5 19L18 6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Pitchforks",
+   "label": "Schiff pitchfork",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 23L22 6M10 23l12-12M5 18L17 6M8 14l6 6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Pitchforks",
+   "label": "Modified Schiff pitchfork",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 23L22 6M12 23l10-10M5 16L15 6M8 12l8 8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Pitchforks",
+   "label": "Inside pitchfork",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 23L22 6M10 23l12-12M5 18L17 6M13 19l6-6\"/></svg>",
+   "shortcut": null
+  }
+ ],
+ "Fib": [
+  {
+   "section": "Fibonacci",
+   "label": "Fib retracement",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M11 8h11M6 14h16M6 20h11\"/><circle cx=\"8.5\" cy=\"8\" r=\"2\"/><circle cx=\"19.5\" cy=\"20\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Trend-based fib extension",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M8.6 18.6l1.8-5.2M12.4 11.4l3.1 4.5M17.3 15.4l1.6-5M11 7h12M11 20h12\"/><circle cx=\"7.5\" cy=\"21\" r=\"1.8\"/><circle cx=\"11.5\" cy=\"9.5\" r=\"1.8\"/><circle cx=\"16.5\" cy=\"17\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Fib channel<span class=\"hp\">?",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M8 22L22 16M6 15l16-6M8 9l14-5\"/><circle cx=\"6\" cy=\"22\" r=\"1.8\"/><circle cx=\"22\" cy=\"5\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Fib time zone",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M7 5v18M11 8v12M17 5v18M22 8v12M7 14h4M17 14h5\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Fib speed resistance fan",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 23L23 5M5 23L23 11M5 23L23 17M5 23L17 5\"/><circle cx=\"5\" cy=\"23\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Trend-based fib time",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 22l5-9M14 5v18M19 5v18M24 5v18\"/><circle cx=\"6\" cy=\"22\" r=\"1.8\"/><circle cx=\"11\" cy=\"13\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Fib circles",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><circle cx=\"14\" cy=\"14\" r=\"2.5\"/><circle cx=\"14\" cy=\"14\" r=\"6\"/><circle cx=\"14\" cy=\"14\" r=\"10\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Fib spiral",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 14a2 2 0 0 1 2-2 4 4 0 0 1 4 4 7 7 0 0 1-7 7 11 11 0 0 1-11-11 17 17 0 0 1 17-17\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Fib speed resistance arcs",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 23L23 5M10 8a12 12 0 0 1 10 10M7 12a16 16 0 0 1 9 9M13 5a8 8 0 0 1 10 10\"/><circle cx=\"5\" cy=\"23\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Fib wedge",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 22L22 8M6 22L22 16M6 22L22 22M10 14a10 10 0 0 1 10 8M13 12a14 14 0 0 1 8 10\"/><circle cx=\"6\" cy=\"22\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Fibonacci",
+   "label": "Pitchfan",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 14L22 4M6 14L22 11M6 14L22 18M6 14L22 24\"/><circle cx=\"6\" cy=\"14\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Gann",
+   "label": "Gann box",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><rect x=\"5\" y=\"5\" width=\"18\" height=\"18\"/><path d=\"M5 5l18 18M5 23L23 5M5 14h18M14 5v18\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Gann",
+   "label": "Gann square fixed",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><rect x=\"5\" y=\"5\" width=\"18\" height=\"18\"/><path d=\"M5 5l18 18M5 23L23 5M5 11h18M5 17h18M11 5v18M17 5v18\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Gann",
+   "label": "Gann square",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><rect x=\"5\" y=\"5\" width=\"18\" height=\"18\"/><path d=\"M5 5l18 18M5 14h18M14 5v18M5 23L23 5\"/><circle cx=\"5\" cy=\"5\" r=\"1.8\"/><circle cx=\"23\" cy=\"23\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Gann",
+   "label": "Gann fan",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 23L23 5M5 23L23 9M5 23L23 14M5 23L23 19M5 23L9 5M5 23L14 5\"/><circle cx=\"5\" cy=\"23\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  }
+ ],
+ "Patterns": [
+  {
+   "section": "Chart patterns",
+   "label": "XABCD pattern",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M7.4 19.6l2.4-9.2M11.6 9.6l4.6 7.2M17.8 16.2l2.2-6.6M7.8 20.4l7.6-3M10.8 8.6l8.6.8\"/><circle cx=\"7\" cy=\"21\" r=\"1.8\"/><circle cx=\"10.5\" cy=\"8.5\" r=\"1.8\"/><circle cx=\"16.5\" cy=\"18\" r=\"1.8\"/><circle cx=\"21\" cy=\"9\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Chart patterns",
+   "label": "Cypher pattern",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M7.4 19.6l2.4-9.2M11.6 9.6l4.6 7.2M17.8 16.2l2.2-6.6M8 20.6l12 -10.6\"/><circle cx=\"7\" cy=\"21\" r=\"1.8\"/><circle cx=\"10.5\" cy=\"8.5\" r=\"1.8\"/><circle cx=\"16.5\" cy=\"18\" r=\"1.8\"/><circle cx=\"21\" cy=\"9\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Chart patterns",
+   "label": "Head and shoulders",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M3.4 21l2.6-6M7.6 14l2-5.4M11.6 9l2 7M15.4 16l1.4-7.6M19 8.6l2 6M23 15l1.6 6M4 18.4h20\"/><circle cx=\"14\" cy=\"6.5\" r=\"1.8\"/><circle cx=\"7\" cy=\"14\" r=\"1.8\"/><circle cx=\"21\" cy=\"14\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Chart patterns",
+   "label": "ABCD pattern",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M7.4 20l4.4-10M13.4 9.6l5 10.2M10 7.4l9.6 .6M8 21l10 0\"/><circle cx=\"7\" cy=\"21\" r=\"1.8\"/><circle cx=\"12\" cy=\"8\" r=\"1.8\"/><circle cx=\"19\" cy=\"21\" r=\"1.8\"/><circle cx=\"23\" cy=\"8\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Chart patterns",
+   "label": "Triangle pattern",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M7.5 7l13 3.4M7.4 8.8l8 11M8.6 21l12.4-9.6\"/><circle cx=\"7\" cy=\"7\" r=\"1.8\"/><circle cx=\"21\" cy=\"11\" r=\"1.8\"/><circle cx=\"16\" cy=\"21\" r=\"1.8\"/><circle cx=\"7\" cy=\"21\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Chart patterns",
+   "label": "Three drives pattern",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 20l3-9 3 5 3-8 3 7 3-4 3 8\"/><circle cx=\"8\" cy=\"11\" r=\"1.6\"/><circle cx=\"14\" cy=\"8\" r=\"1.6\"/><circle cx=\"20\" cy=\"11\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Elliott waves",
+   "label": "Elliott impulse wave (12345)",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 22l4-8 3 3 5-10 3 6 4-9\"/><circle cx=\"9\" cy=\"14\" r=\"1.6\"/><circle cx=\"12\" cy=\"17\" r=\"1.6\"/><circle cx=\"17\" cy=\"7\" r=\"1.6\"/><circle cx=\"20\" cy=\"13\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Elliott waves",
+   "label": "Elliott correction wave (ABC)",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 8l7 10 4-5 7 9\"/><circle cx=\"12\" cy=\"18\" r=\"1.6\"/><circle cx=\"16\" cy=\"13\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Elliott waves",
+   "label": "Elliott triangle wave (ABCDE)",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 9l5 8 4-6 3 7 3-5 5 6\"/><circle cx=\"9\" cy=\"17\" r=\"1.6\"/><circle cx=\"13\" cy=\"11\" r=\"1.6\"/><circle cx=\"16\" cy=\"18\" r=\"1.6\"/><circle cx=\"19\" cy=\"13\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Elliott waves",
+   "label": "Elliott double combo wave (WXY)",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 9l5 9 4-4 4 7 3-5 4 4\"/><circle cx=\"9\" cy=\"18\" r=\"1.6\"/><circle cx=\"13\" cy=\"14\" r=\"1.6\"/><circle cx=\"17\" cy=\"21\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Elliott waves",
+   "label": "Elliott triple combo wave (WXYXZ)",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M3 9l4 7 3-3 3 7 3-6 3 4 3-5 3 5\"/><circle cx=\"7\" cy=\"16\" r=\"1.6\"/><circle cx=\"13\" cy=\"20\" r=\"1.6\"/><circle cx=\"19\" cy=\"17\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Cycles",
+   "label": "Cyclic lines",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 5v18M12 5v18M18 5v18M24 5v18\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Cycles",
+   "label": "Time cycles",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 20a5 5 0 0 1 10 0M14 20a5 5 0 0 1 10 0M4 20h20\"/><circle cx=\"9\" cy=\"15\" r=\"1.6\"/><circle cx=\"19\" cy=\"15\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Cycles",
+   "label": "Sine line",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M3 14c3-9 6-9 8 0s5 9 8 0 4-6 6-3\"/></svg>",
+   "shortcut": null
+  }
+ ],
+ "Forecasting": [
+  {
+   "section": "Forecasting",
+   "label": "Long position",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 6h18M13 14h10M5 22h18M7 9v6\"/><text x=\"9\" y=\"13.5\" font-size=\"7\" font-weight=\"700\" fill=\"currentColor\" stroke=\"none\">L</text></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Forecasting",
+   "label": "Short position",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 6h18M13 14h10M5 22h18M7 13v6\"/><text x=\"9\" y=\"21.5\" font-size=\"7\" font-weight=\"700\" fill=\"currentColor\" stroke=\"none\">S</text></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Forecasting",
+   "label": "Position forecast",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M7 4v4M7 13v4M7 8h0M5 8h4v5H5zM13 8v3M13 17v5M11 11h4v6h-4zM19 5v4M19 15v4M17 9h4v6h-4z\"/><path d=\"M4 23h20\" stroke-dasharray=\"2 2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Forecasting",
+   "label": "Bars pattern",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 6v3M6 15v4M4 9h4v6H4zM12 11v3M12 20v3M10 14h4v6h-4zM18 8v4M18 18v3M16 12h4v6h-4z\"/><path d=\"M22 6l2 2-2 2\" /></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Forecasting",
+   "label": "Ghost feed",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 12v4M4 21v2M2.5 16h3v5h-3zM10 8v3M10 17v3M8.5 11h3v6h-3zM16 11v3M16 20v2M14.5 14h3v6h-3zM22 6v3M22 15v3M20.5 9h3v6h-3z\"/><path d=\"M4 5l6-1 6 2 6-2\" stroke-dasharray=\"1.5 2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Forecasting",
+   "label": "Sector",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M7 23V6M7 23h16M7 6a17 17 0 0 1 16 17\"/><circle cx=\"7\" cy=\"6\" r=\"1.8\"/><circle cx=\"23\" cy=\"23\" r=\"1.8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Volume-based",
+   "label": "Anchored VWAP",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 20c3 0 4-5 7-5s4 3 6 3 3-6 5-6\"/><circle cx=\"12\" cy=\"9\" r=\"1.8\"/><path d=\"M12 11v4\"/><path d=\"M5 23h18\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Volume-based",
+   "label": "Fixed range volume profile",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 5v18M5 8h6M5 11h10M5 14h13M5 17h8M5 20h5M5 23h0\"/><path d=\"M5 5h13M5 23h13\" stroke-dasharray=\"2 2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Volume-based",
+   "label": "Anchored volume profile",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><circle cx=\"7\" cy=\"6\" r=\"1.8\"/><path d=\"M7 8v15M7 11h6M7 14h10M7 17h13M7 20h7\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Measurers",
+   "label": "Price range",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 4v20M10.5 7.5L14 4l3.5 3.5M10.5 20.5L14 24l3.5-3.5M6 4h16M6 24h16\" stroke-dasharray=\"0\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Measurers",
+   "label": "Date range",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 14h20M7.5 10.5L4 14l3.5 3.5M20.5 10.5L24 14l-3.5 3.5M4 6v16M24 6v16\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Measurers",
+   "label": "Date and price range",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><rect x=\"5\" y=\"5\" width=\"18\" height=\"18\"/><path d=\"M5 14h18M14 5v18M11.5 8l2.5-3 2.5 3M11.5 20l2.5 3 2.5-3M8 11.5L5 14l3 2.5M20 11.5l3 2.5-3 2.5\"/></svg>",
+   "shortcut": null
+  }
+ ],
+ "Shapes": [
+  {
+   "section": "Brushes",
+   "label": "Brush",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M21.5 6.5l-8.8 8.8 2 2 8.8-8.8a1.4 1.4 0 0 0 0-2 1.4 1.4 0 0 0-2 0z\"/><path d=\"M12.2 15.8c-2.4-.4-4 1-4.4 3-.2 1-.8 1.7-2.3 2 3.4 1.6 7.2.6 8.2-2.2.3-.8.2-1.9-.6-2.4\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Brushes",
+   "label": "Highlighter",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M18 5l5 5-9 9-5-5z\"/><path d=\"M9 14l-4 5 1.6 2.4H12l2-2M7 22h6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Arrows",
+   "label": "Arrow marker",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 22l9-9\"/><path d=\"M22 6l-4 .5-6 6 5 5 6-6z\" transform=\"translate(0 0)\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Arrows",
+   "label": "Arrow",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M9.4 18.6L20 8M15 7.5h5.5V13\"/><circle cx=\"8\" cy=\"20\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Arrows",
+   "label": "Arrow mark up",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 5l-8 8h4.5v9h7v-9H22z\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Arrows",
+   "label": "Arrow mark down",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 23l-8-8h4.5V6h7v9H22z\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Rectangle",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><rect x=\"6\" y=\"6\" width=\"16\" height=\"16\"/><circle cx=\"6\" cy=\"6\" r=\"1.6\"/><circle cx=\"22\" cy=\"6\" r=\"1.6\"/><circle cx=\"6\" cy=\"22\" r=\"1.6\"/><circle cx=\"22\" cy=\"22\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Rotated rectangle",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 5l9 9-9 9-9-9z\" transform=\"rotate(-18 14 14) scale(.86) translate(2.3 2.3)\"/><circle cx=\"14\" cy=\"4.5\" r=\"1.6\"/><circle cx=\"23.5\" cy=\"14\" r=\"1.6\"/><circle cx=\"14\" cy=\"23.5\" r=\"1.6\"/><circle cx=\"4.5\" cy=\"14\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Path",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 20l7-8 4 4 7-9\"/><circle cx=\"5\" cy=\"20\" r=\"1.6\"/><circle cx=\"23\" cy=\"7\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Circle",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><circle cx=\"14\" cy=\"14\" r=\"9\"/><circle cx=\"14\" cy=\"14\" r=\"1.6\"/><circle cx=\"23\" cy=\"14\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Ellipse",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><ellipse cx=\"14\" cy=\"14\" rx=\"10\" ry=\"7\"/><circle cx=\"14\" cy=\"7\" r=\"1.6\"/><circle cx=\"24\" cy=\"14\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Polyline",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 21l3-11 7 3 6-8-1 14z\"/><circle cx=\"6\" cy=\"21\" r=\"1.6\"/><circle cx=\"9\" cy=\"10\" r=\"1.6\"/><circle cx=\"22\" cy=\"5\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Triangle",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 6l9 16H5z\"/><circle cx=\"14\" cy=\"6\" r=\"1.6\"/><circle cx=\"5\" cy=\"22\" r=\"1.6\"/><circle cx=\"23\" cy=\"22\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Arc",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 21a10 10 0 0 1 16 0M6 21h16\"/><circle cx=\"6\" cy=\"21\" r=\"1.6\"/><circle cx=\"22\" cy=\"21\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Curve",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 21C8 6 18 6 23 12\"/><circle cx=\"5\" cy=\"21\" r=\"1.6\"/><circle cx=\"23\" cy=\"12\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Shapes",
+   "label": "Double curve",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 18c4-14 8-14 10-4s6 8 10-4\"/><circle cx=\"4\" cy=\"18\" r=\"1.6\"/><circle cx=\"24\" cy=\"10\" r=\"1.6\"/></svg>",
+   "shortcut": null
+  }
+ ],
+ "Text": [
+  {
+   "section": "Text",
+   "label": "Text",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M8 8.5h12M14 8.5v12M12 20.5h4\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Anchored text",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M9 7.5h10M14 7.5v9M12 16.5h4M14 18.5v2.5M10.5 23h7M14 21a3.5 3.5 0 0 0 3.5 2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Note",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M6 6h16v12H13l-4 4v-4H6z\"/><path d=\"M10 10h8M10 14h5\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Price note",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M5 9h14l4 5-4 5H5z\"/><path d=\"M9 14h6\"/><circle cx=\"19\" cy=\"14\" r=\"1.2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Pin",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 24l-5-9a6 6 0 1 1 10 0z\"/><circle cx=\"14\" cy=\"10.5\" r=\"2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Table",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><rect x=\"5\" y=\"6\" width=\"18\" height=\"16\"/><path d=\"M5 11h18M5 16.5h18M12 6v16\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Callout",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M7 6h14v9H15l-3 5-1-5H7z\"/><path d=\"M11 9.5h6M11 12h4\"/><circle cx=\"12\" cy=\"22.5\" r=\"1.2\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Comment",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 6a8 7 0 1 0 0 14h.5l4 3v-3.6A7 7 0 0 0 14 6z\"/><path d=\"M10.5 12h7M10.5 15h4\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Price label",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M4 14l5-5h14v10H9z\"/><path d=\"M13 12v4M13 14h6\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Signpost",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 23V11M7 5h14v6H7z\"/><path d=\"M10 8h8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Text",
+   "label": "Flag mark",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M8 5v18M8 6h13l-3 4.5 3 4.5H8\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Content",
+   "label": "Image",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><rect x=\"5\" y=\"6\" width=\"18\" height=\"16\" rx=\"1.5\"/><circle cx=\"10.5\" cy=\"11.5\" r=\"1.8\"/><path d=\"M5 19l5.5-5 4 3.5 3-2.5 5.5 4.5\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Content",
+   "label": "Post",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><rect x=\"5\" y=\"6\" width=\"18\" height=\"16\" rx=\"1.5\"/><circle cx=\"10\" cy=\"11\" r=\"2\"/><path d=\"M14 10h6M14 13h6M8 17h12\"/></svg>",
+   "shortcut": null
+  },
+  {
+   "section": "Content",
+   "label": "Idea",
+   "svg": "<svg class=\"i\" viewBox=\"0 0 28 28\"><path d=\"M14 4.5a6.5 6.5 0 0 0-3.5 12v2.5h7v-2.5a6.5 6.5 0 0 0-3.5-12z\"/><path d=\"M11 22.5h6\"/></svg>",
+   "shortcut": null
+  }
+ ]
+}

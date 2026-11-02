@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Toolbar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#0b0b0b}
+.tool{all:unset;box-sizing:border-box;width:52px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#d1d4dc;position:relative}
+.tool.open::after{content:'';position:absolute;right:0;top:9px;width:9px;height:20px;box-sizing:border-box;background:#2a2a2a;border-radius:3px 0 0 3px}
+.tool.open::before{content:'';position:absolute;right:3px;top:16px;width:4px;height:4px;box-sizing:border-box;border-left:1.2px solid #b2b5be;border-bottom:1.2px solid #b2b5be;transform:rotate(45deg);z-index:1}
+.tool .tile{width:34px;height:34px;border-radius:6px;display:flex;align-items:center;justify-content:center}
+.tool:hover .tile{background:#1f1f1f;color:#fff}
+.tool.on .tile{background:#2b2b2b;color:#fff}
+.tool:focus-visible .tile{outline:2px solid #2962ff;outline-offset:-2px}
+.tool svg{display:block}
+</style>
+</helmet>
+<div style="width: 52px; height: 622px; box-sizing: border-box; padding: 8px 0; background: #0b0b0b; border-right: 1px solid #262626; display: flex; flex-direction: column; align-items: center">
+
+<button class="tool {{c.cross}}" aria-label="Cross" aria-pressed="{{p.cross}}" onClick="{{h.cross}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M14 5v6M14 17v6M5 14h6M17 14h6"></path></svg></span></button>
+
+<button class="tool {{c.trend}}" aria-label="Trend line" aria-pressed="{{p.trend}}" onClick="{{h.trend}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M9.2 18.8L18.8 9.2"></path><circle cx="8" cy="20" r="2.2"></circle><circle cx="20" cy="8" r="2.2"></circle></svg></span></button>
+
+<button class="tool {{c.fib}}" aria-label="Fib and Gann tools" aria-pressed="{{p.fib}}" onClick="{{h.fib}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M11 8h11M6 14h16M6 20h11"></path><circle cx="8.5" cy="8" r="2"></circle><circle cx="19.5" cy="20" r="2"></circle></svg></span></button>
+
+<button class="tool {{c.pattern}}" aria-label="Patterns" aria-pressed="{{p.pattern}}" onClick="{{h.pattern}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7.2 19.2L9.6 9.6M11.6 10.6l3 6.4M16.4 16.4l3.6-6.8M20.6 11.4l-6 9.6M7.8 20.2l5.4 1.2M10.4 8.5l8.4.8"></path><circle cx="7" cy="20" r="1.8"></circle><circle cx="10" cy="8" r="1.8"></circle><circle cx="15" cy="18" r="1.8"></circle><circle cx="21" cy="9" r="1.8"></circle><circle cx="21" cy="21" r="1.8"></circle></svg></span></button>
+
+<button class="tool {{c.proj}}" aria-label="Projection" aria-pressed="{{p.proj}}" onClick="{{h.proj}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M6 8h16M13 14h9M6 20h16M9 12v8M9 12h4"></path><circle cx="9" cy="20" r="1.6"></circle></svg></span></button>
+
+<button class="tool {{c.brush}}" aria-label="Brushes and shapes" aria-pressed="{{p.brush}}" onClick="{{h.brush}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M21.5 6.5l-8.8 8.8 2 2 8.8-8.8a1.4 1.4 0 0 0 0-2l0 0a1.4 1.4 0 0 0-2 0z"></path><path d="M12.2 15.8c-2.4-.4-4 1-4.4 3-.2 1-.8 1.7-2.3 2 3.4 1.6 7.2.6 8.2-2.2.3-.8.2-1.9-.6-2.4"></path></svg></span></button>
+
+<button class="tool {{c.text}}" aria-label="Text and notes" aria-pressed="{{p.text}}" onClick="{{h.text}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M8 8.5h12M14 8.5v12M12 20.5h4"></path></svg></span></button>
+
+<button class="tool {{c.emoji}}" aria-label="Icons and emojis" aria-pressed="{{p.emoji}}" onClick="{{h.emoji}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><circle cx="14" cy="14" r="8.5"></circle><path d="M10.6 16.6c.9 1.4 2 2.1 3.4 2.1s2.5-.7 3.4-2.1"></path><circle cx="11.3" cy="11.8" r=".9" fill="currentColor" stroke="none"></circle><circle cx="16.7" cy="11.8" r=".9" fill="currentColor" stroke="none"></circle></svg></span></button>
+
+<div style="width: 32px; height: 1px; margin: 5px 0 6px; background: #2a2a2a; flex: none"></div>
+
+<button class="tool {{c.ruler}}" aria-label="Measure" aria-pressed="{{p.ruler}}" onClick="{{h.ruler}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><g transform="rotate(-45 14 14)"><rect x="2.5" y="10" width="23" height="8" rx="1.2"></rect><path d="M6.5 10v3M10.5 10v4.5M14.5 10v3M18.5 10v4.5M22.5 10v3"></path></g></svg></span></button>
+
+<button class="tool {{c.zoom}}" aria-label="Zoom in" aria-pressed="{{p.zoom}}" onClick="{{h.zoom}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><circle cx="12.5" cy="12.5" r="6.5"></circle><path d="M17.3 17.3L23 23M12.5 9.7v5.6M9.7 12.5h5.6"></path></svg></span></button>
+
+<div style="width: 32px; height: 1px; margin: 5px 0 6px; background: #2a2a2a; flex: none"></div>
+
+<button class="tool {{c.magnet}}" aria-label="Magnet mode" aria-pressed="{{p.magnet}}" onClick="{{h.magnet}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7.5 6.5h4.5v10a2 2 0 0 0 4 0v-10h4.5v10a6.5 6.5 0 0 1-13 0z"></path><path d="M7.5 11h4.5M16 11h4.5"></path></svg></span></button>
+
+<button class="tool {{c.pencil}}" aria-label="Stay in drawing mode" aria-pressed="{{p.pencil}}" onClick="{{h.pencil}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M16.6 6.4l3 3-9.5 9.5-4 1 1-4z"></path><path d="M14.6 8.4l3 3"></path><rect x="16.5" y="17" width="7" height="5.5" rx="1"></rect><path d="M18 17v-1.4a2 2 0 0 1 4 0V17"></path></svg></span></button>
+
+<button class="tool {{c.lock}}" aria-label="Lock all drawings" aria-pressed="{{p.lock}}" onClick="{{h.lock}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="8" y="13" width="12" height="9" rx="1.6"></rect><path d="M10.5 13v-3a3.5 3.5 0 0 1 6.6-1.6"></path><circle cx="14" cy="17.5" r="1" fill="currentColor" stroke="none"></circle></svg></span></button>
+
+<button class="tool {{c.eye}}" aria-label="Hide all drawings" aria-pressed="{{p.eye}}" onClick="{{h.eye}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 14s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"></path><circle cx="14" cy="14" r="3"></circle></svg></span></button>
+
+<div style="width: 32px; height: 1px; margin: 5px 0 6px; background: #2a2a2a; flex: none"></div>
+
+<button class="tool" aria-label="Remove objects" onClick="{{h.trash}}"><span class="tile"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7 9h14M12 9V7h4v2M9 9l1 12.5h8L19 9M12.5 12.5v6.5M15.5 12.5v6.5"></path></svg></span></button>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lib":{"editor":null},"onPick":{"editor":null},"onToggle":{"editor":null},"sel":{"editor":null},"$preview":{"width":52,"height":622}}'>
+class Component extends DCLogic {
+renderVals() {
+const st = this.state || {};
+const tool = this.props.sel || st.tool || 'cross';
+const tog = st.tog || {};
+const tools = ['cross','trend','fib','pattern','proj','brush','text','emoji'];
+const toggles = ['ruler','zoom','magnet','pencil','lock','eye'];
+const c = {}, p = {}, h = {};
+tools.forEach((k) => {
+const on = tool === k;
+c[k] = (on ? 'on' : '') + (this.props.lib === k ? ' open' : ''); p[k] = on;
+h[k] = () => { this.setState({ tool: k }); if (this.props.onPick) this.props.onPick(k); };
+});
+toggles.forEach((k) => {
+const on = !!tog[k];
+c[k] = on ? 'on' : ''; p[k] = on;
+h[k] = () => { const t = Object.assign({}, (this.state || {}).tog || {}); t[k] = !t[k]; this.setState({ tog: t }); if (this.props.onToggle) this.props.onToggle(k, !!t[k]); };
+});
+h.trash = () => { if (this.props.onToggle) this.props.onToggle('trash', true); };
+return { c, p, h };
+}
+}
+</script>
+</body>
+</html>

@@ -3,8 +3,10 @@
   import appIcon from '../src-tauri/icons/icon.png';
   import { defaultTimezone, timezoneChoices, formatClock } from './timezones';
   import { onMount } from 'svelte';
-  import DrawingToolbar from './DrawingToolbar.svelte';
+  import ToolRail from './ToolRail.svelte';
+  import { drawingGroups } from './drawing-catalog';
   import type { DrawingToolPreferences } from './drawing-catalog';
+  import { pushCustomDrawingData } from './custom-drawing-tools';
   import IndicatorPicker from './IndicatorPicker.svelte';
   import ChartAppearance from './ChartAppearance.svelte';
   import { chartStyles, isChartStyle, setPriceAppearance, type ChartStyleId } from './chart-styles';
@@ -76,6 +78,15 @@
   onMount(() => {
     const chart = new Vela(chartHost, { symbol: chartSymbol(), timeframe: '60', bars: 500, live: true, theme: 'dark', upColor: '#8a746e', downColor: '#c16f61', currentPriceLine: true, volume: true, drawings: true, animations: { intro: false, zoom: true, pan: true } });
     vela = chart;
+    let customDraft: unknown = null;
+    let customSelection: string[] = [];
+    const syncCustomDrawings = () => pushCustomDrawingData(chart.renderer, chart, customDraft, customSelection);
+    const offCustomCreated = chart.on('drawing:created', syncCustomDrawings);
+    const offCustomEdited = chart.on('drawing:edited', syncCustomDrawings);
+    const offCustomRemoved = chart.on('drawing:removed', syncCustomDrawings);
+    const offCustomDraft = chart.on('drawing:draft', ({ doc }) => { customDraft = doc; syncCustomDrawings(); });
+    const offCustomSelection = chart.on('drawing:selected', ({ ids }) => { customSelection = ids; syncCustomDrawings(); });
+    syncCustomDrawings();
     chart.renderer.set({ settings: false, attribution: false });
     defaultAppearance = chart.renderer.getConfig() as ChartConfig;
     defaultAppearance.timeScale.timezone = defaultTimezone;
@@ -129,7 +140,7 @@
     const timer = window.setInterval(() => clock = new Date(), 1000);
     const resize = new ResizeObserver(() => chart.resize());
     resize.observe(chartHost);
-    return () => { flushPreferences(); window.removeEventListener('pagehide', flushPreferences); offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); removeFeedHealth?.(); clearInterval(timer); resize.disconnect(); chart.destroy(); };
+    return () => { flushPreferences(); window.removeEventListener('pagehide', flushPreferences); offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); offCustomCreated(); offCustomEdited(); offCustomRemoved(); offCustomDraft(); offCustomSelection(); removeFeedHealth?.(); clearInterval(timer); resize.disconnect(); chart.destroy(); };
   });
   // Share the chart overlay with the renderer's indicator legend. Measure the
   // symbol block so wrapping/resizing never requires a fixed indicator offset.
@@ -236,6 +247,16 @@
       left: Math.max(0, Math.min(Math.max(0, containerRect.width - dialogRect.width), current.left + offset[0])),
       top: Math.max(0, Math.min(Math.max(0, containerRect.height - dialogRect.height), current.top + offset[1])),
     };
+  }
+  function clearAllDrawings() {
+    if (!vela) return;
+    vela.drawings.removeMany(vela.drawings.all().map(drawing => drawing.id));
+  }
+  function setAllDrawingsLocked(on: boolean) {
+    for (const drawing of vela?.drawings.all() ?? []) vela?.drawings.lock(drawing.id, on);
+  }
+  function setAllDrawingsHidden(on: boolean) {
+    for (const drawing of vela?.drawings.all() ?? []) vela?.drawings.show(drawing.id, !on);
   }
   function updateDrawingPreferences(drawingTools: DrawingToolPreferences) {
     extras = { ...extras, drawingTools };
@@ -368,7 +389,7 @@
     <div class="top-divider"></div><div class="style-picker"><button class="chart-style" aria-label="Chart style" aria-expanded={styleMenuOpen} class:style-selected={chartStyle !== 'candles'} onclick={() => styleMenuOpen = !styleMenuOpen} onkeydown={(e) => { if (e.key === 'Escape') styleMenuOpen = false; }}><CandlestickChart size={14}/><span>{chartStyles.find(style => style.id === chartStyle)?.label}</span><ChevronDown size={10}/></button>{#if styleMenuOpen}<div class="style-menu" role="group" aria-label="Chart styles">{#each chartStyles as style}<button class:menu-selected={chartStyle === style.id} aria-pressed={chartStyle === style.id} onclick={() => chooseStyle(style.id)}><CandlestickChart size={14}/>{style.label}{#if chartStyle === style.id}<span class="new-tag">SELECTED</span>{/if}</button>{/each}<div class="style-menu-note">Appearance controls in Chart settings</div></div>{/if}</div>
     <div class="top-spacer"></div>{#if chartStyle === 'footprint'}<button class="top-action" onclick={() => { indicatorsOpen = false; appearanceOpen = false; settingsOpen = true; }}><SlidersHorizontal size={13}/> Footprint</button>{/if}<button class="top-action" aria-label="Indicators" aria-expanded={indicatorsOpen} onclick={() => { appearanceOpen = false; settingsOpen = false; marketMenuOpen = false; venueMenuOpen = false; styleMenuOpen = false; vela?.renderer.closeDialogs(); indicatorsOpen = !indicatorsOpen; }}><SlidersHorizontal size={13}/> Indicators</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action"><Eye size={13}/> View as</button><button class="top-icon" aria-label="Chart settings" onclick={() => { indicatorsOpen = false; settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
   </nav>
-  <main class="chart-layout">{#if vela && chartArea}<DrawingToolbar chart={vela} area={chartArea} preferences={extras.drawingTools} change={updateDrawingPreferences} blocked={appearanceOpen || settingsOpen || indicatorsOpen}/>{:else}<aside class="drawing-toolbar" aria-label="Drawing tools"></aside>{/if}
+  <main class="chart-layout">{#if vela && chartArea}<ToolRail chart={vela} groups={drawingGroups} bind:prefs={extras.drawingTools} onClear={clearAllDrawings} onLockAll={setAllDrawingsLocked} onHideAll={setAllDrawingsHidden} modeOff={null} disabled={appearanceOpen || settingsOpen || indicatorsOpen}/>{:else}<aside class="drawing-toolbar" aria-label="Drawing tools"></aside>{/if}
     <section class="chart-area" bind:this={chartArea}><div class="chart-legend" use:measureSymbolLegend><div class="legend-main"><span class="pair-name">{symbol}</span></div>{#if chartStyle === 'footprint'}<div class="legend-sub">Bid × Ask</div>{/if}</div><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market chart"></div></div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
       {#if indicatorsOpen && vela}<IndicatorPicker chart={vela} close={() => indicatorsOpen = false}/>{/if}
       {#if appearanceOpen && appearance}<ChartAppearance config={appearance} {extras} {persistenceError} patch={applyAppearance} changeExtras={applyExtras} {chooseStyle} reset={resetAppearance} close={() => appearanceOpen = false}/>{/if}
