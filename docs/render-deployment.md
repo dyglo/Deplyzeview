@@ -94,3 +94,11 @@ Dashboard: https://dashboard.render.com/web/srv-dbjnin3bc2fs73dc0mu0
 ## 0.1.2 update — 2 November 2026
 
 The user approved committing/pushing the desktop authentication fix and OANDA gold addition, and making a new deploy of this existing Free service. Gold data is accessible through the authenticated account candle and pricing endpoints even though the directory omits it. Discovery now verifies and lists XAU_USD; aliases normalize to that identifier. Metals other than gold and other CFD expansion remain deferred. Local verification: 58 JavaScript tests, clean frontend check, H1/M15 gold candles and a pricing-stream quote. Production deploy ID and checks follow after rollout. The 0.1.2 installer includes the Windows credential-vault/startup repair from 0.1.1.
+
+### Verified 0.1.2 rollout
+
+- Functional commit: `de3b86f30a3dc8ea84fb1cc3897debddcd65a20a`, pushed to `codex/multi-asset-market-data`.
+- Render deploy: `dep-dbk51uvlk1mc73asecf0`, status `live` on 2 November 2026 at 12:01:43 EAT (09:01:43 UTC). Same existing Frankfurt Free service and production URL; no new service or paid plan.
+- Production OANDA directory: HTTP 200, 69 instruments including verified XAU_USD. Compact XAUUSD requests returned ten M15 candles and ten H1 candles, each explicitly identified as OANDA metal/CFD data. Pricing SSE returned HTTP 200 and an actual gold quote; production health returned HTTP 200.
+- Validation: 58 JavaScript tests and 11 Rust tests passed; frontend diagnostics clean; MSI and NSIS production builds passed. Actual credential scan over 58 source/frontend/executable/installer files found no matches.
+- Updated installer: `src-tauri/target/release/bundle/nsis/DeplyzeView_0.1.2_x64-setup.exe`; MSI: `src-tauri/target/release/bundle/msi/DeplyzeView_0.1.2_x64_en-US.msi`.
