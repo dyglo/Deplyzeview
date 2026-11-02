@@ -9,6 +9,7 @@ type MarketBar = Ohlcv;
 type TradeEvent = { venue: string; instrument: string; timestampMs: number; price: number; size: number; aggressorSide: 'buy' | 'sell'; sourceEventId: string };
 type BarRange = { from?: number; to?: number; limit?: number };
 type GatewayBars = { bars: Ohlcv[]; instrument: { quoteCurrency?: string; delayMs?: number; instrumentType: string }; delivery: string };
+export type GatewayQuote = { price: number; time: number; delayMs?: number; freshness: 'stale' | 'delayed' | 'live' | 'market_closed'; marketSession?: string };
 
 function intervalMs(timeframe: string) {
   if (/^\d+[dD]$/.test(timeframe)) return Number.parseInt(timeframe, 10) * 86_400_000;
@@ -66,6 +67,12 @@ export class RustMarketDataProvider {
     for (const bar of normalized) cache.set(bar.time, bar);
     this.candleCache.set(key, cache);
     return normalized;
+  }
+
+  async getQuote(ticker: string): Promise<GatewayQuote | undefined> {
+    if (this.venue !== 'narwhal') return undefined;
+    if (!(window as any).__TAURI_INTERNALS__) throw new Error('Run DeplyzeView in its Tauri desktop shell to access market quotes.');
+    return invoke<GatewayQuote>('get_remote_market_data', { provider: this.venue, action: 'quote', instrument: ticker.toUpperCase() });
   }
 
   subscribe(ticker: string, timeframe: string, onBar: (bar: Ohlcv) => void) {

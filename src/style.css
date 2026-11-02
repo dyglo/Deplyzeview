@@ -115,3 +115,35 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 .drawing-group-more{display:grid;place-items:center;width:9px;height:29px;padding:0;color:var(--tone-858791,#858791)}
 .drawing-group-more:hover,.drawing-group-more[aria-expanded=true]{color:var(--tone-dadbe0,#dadbe0);background:var(--tone-30323a,#30323a);border-radius:2px}
 .market-results{max-height:230px;overflow-y:auto;margin:5px 0 9px}.market-result{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;padding:8px;text-align:left;border-radius:3px}.market-result:hover,.market-result:focus-visible{background:var(--tone-272930,#272930)}.market-result strong{font-size:10px;font-weight:500}.market-result small{font-size:8px;color:var(--tone-83858e,#83858e);overflow-wrap:anywhere}.market-back{padding:7px 0;color:var(--tone-a4a6ad,#a4a6ad);font-size:9px}
+
+/* Right-side workspace dock: the watchlist docks beside the chart and defaults to the icon rail only. */
+.workspace-dock{height:100%;min-height:0;flex:none;display:flex;flex-direction:row;border-left:1px solid var(--line);background:var(--tone-111215,#111215)}
+.workspace-rail{width:38px;flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 4px;border-left:1px solid var(--line);background:var(--tone-111215,#111215)}
+.workspace-rail button{width:29px;height:30px;display:grid;place-items:center;border-radius:4px;color:var(--tone-858791,#858791);transition:background .12s,color .12s}
+.workspace-rail button:hover,.workspace-rail button:focus-visible{background:var(--tone-26282e,#26282e);color:var(--tone-dadbe0,#dadbe0)}
+.workspace-rail button.rail-active{background:var(--tone-24262b,#24262b);color:var(--tone-e0e1e5,#e0e1e5)}
+.watchlist-panel{width:252px;min-width:220px;max-width:32vw;min-height:0;display:flex;flex-direction:column;background:var(--tone-101114,#101114);border-right:1px solid var(--line)}
+.watchlist-header{height:45px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 14px;border-bottom:1px solid var(--line)}
+.watchlist-header>div{display:flex;align-items:baseline;gap:7px;min-width:0}.watchlist-header h2{margin:0;color:var(--tone-d4d5da,#d4d5da);font-size:10px;font-weight:550}.watchlist-header small{color:var(--muted);font-size:8px}
+.watchlist-add{width:27px;height:27px;display:grid;place-items:center;border-radius:3px;color:var(--tone-9a9ca5,#9a9ca5)}.watchlist-add:hover{background:var(--tone-26282e,#26282e);color:var(--tone-e0e1e5,#e0e1e5)}
+.watchlist-columns{height:27px;flex:none;display:grid;grid-template-columns:minmax(0,1fr) 57px;align-items:center;padding:0 35px 0 12px;border-bottom:1px solid var(--tone-25272d,#25272d);color:var(--muted);font-size:7px;letter-spacing:.35px;text-transform:uppercase}
+.watchlist-items{min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--tone-41434b,#41434b) transparent}.watchlist-row{min-height:55px;display:grid;grid-template-columns:minmax(0,1fr) 50px 22px;align-items:center;gap:4px;padding:3px 6px 3px 11px;border-bottom:1px solid color-mix(in srgb,var(--line) 65%,transparent)}.watchlist-row:hover{background:var(--tone-17181c,#17181c)}
+.watchlist-select{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:4px 0;text-align:left}.watchlist-symbol{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tone-dadbe0,#dadbe0);font:500 10px "Roboto Mono",monospace}.watchlist-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tone-83858d,#83858d);font-size:8px}.watchlist-type{color:var(--muted);font-size:7px;text-transform:capitalize}.watchlist-provider{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tone-a4a6ad,#a4a6ad);font-size:8px}.watchlist-remove{width:20px;height:24px;display:grid;place-items:center;border-radius:3px;color:var(--tone-70737c,#70737c);opacity:0}.watchlist-row:hover .watchlist-remove,.watchlist-remove:focus-visible{opacity:1}.watchlist-remove:hover{background:var(--tone-292b32,#292b32);color:#cf8a7c}
+.watchlist-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:22px;text-align:center;color:var(--tone-858791,#858791)}.watchlist-empty strong{color:var(--tone-bfc1c8,#bfc1c8);font-size:10px;font-weight:500}.watchlist-empty span{max-width:180px;color:var(--muted);font-size:8px;line-height:1.6}.watchlist-empty>button{display:flex;align-items:center;gap:5px;margin-top:4px;padding:7px 10px;border:1px solid var(--tone-3b3d45,#3b3d45);border-radius:4px;color:var(--tone-c7c9ce,#c7c9ce);font-size:9px}.watchlist-empty>button:hover{background:var(--tone-24262b,#24262b)}.watchlist-storage-error{padding:8px 10px;border-top:1px solid var(--line);color:#c58a7c;font-size:8px;line-height:1.5}
+@media(max-width:900px){.watchlist-panel{width:220px;min-width:205px}.watchlist-columns{grid-template-columns:minmax(0,1fr) 49px}.watchlist-row{grid-template-columns:minmax(0,1fr) 44px 20px}}
+@media(max-width:720px){.watchlist-panel{width:205px;min-width:190px}.watchlist-provider{font-size:7px}}
+
+/* Watchlist market table: prices and daily deltas stay inside the dock, never over the chart. */
+.watchlist-panel{width:350px;min-width:320px;max-width:34vw}
+.watchlist-header small{font-variant-numeric:tabular-nums}
+.watchlist-columns{grid-template-columns:minmax(0,1fr) 78px 76px 22px;padding:0 6px 0 11px}
+.watchlist-row{grid-template-columns:minmax(0,1fr) 78px 76px 22px;gap:3px;padding:3px 6px 3px 11px}
+.watchlist-select{gap:2px}
+.watchlist-meta{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:7px;text-transform:capitalize}
+.watchlist-last,.watchlist-change{min-width:0;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:3px;font-variant-numeric:tabular-nums}
+.watchlist-last strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tone-dadbe0,#dadbe0);font:500 9px "Roboto Mono",monospace}
+.watchlist-last small,.watchlist-change small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:7px}
+.watchlist-change strong{font:500 9px "Roboto Mono",monospace;white-space:nowrap}
+.watchlist-change.change-positive strong{color:#83ae96}.watchlist-change.change-negative strong{color:#c77d70}.watchlist-change.change-neutral strong{color:var(--tone-858791,#858791)}
+@media(max-width:900px){.watchlist-panel{width:330px;min-width:285px}.watchlist-columns{grid-template-columns:minmax(0,1fr) 69px 67px 20px}.watchlist-row{grid-template-columns:minmax(0,1fr) 69px 67px 20px}}
+@media(max-width:720px){.watchlist-panel{width:310px;min-width:280px}.watchlist-columns{grid-template-columns:minmax(0,1fr) 65px 64px 20px}.watchlist-row{grid-template-columns:minmax(0,1fr) 65px 64px 20px}}
