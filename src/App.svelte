@@ -1,4 +1,6 @@
 <script lang="ts">
+  import PineEditor from './PineEditor.svelte';
+  import { readLibrary, writeLibrary, type SavedScript } from './pine/library';
   import type { AppTheme } from './chart-theme';
   import appIcon from '../src-tauri/icons/icon.png';
   import { defaultTimezone, timezoneChoices, formatClock } from './timezones';
@@ -10,6 +12,7 @@
   import IndicatorPicker from './IndicatorPicker.svelte';
   import ChartAppearance from './ChartAppearance.svelte';
   import SymbolSearch from './SymbolSearch.svelte';
+  import SymbolTabBar from './SymbolTabBar.svelte';
   import { fetchWatchlistQuote, type WatchlistQuote } from './watchlist-quotes';
   import { addWatchlistItem, readWatchlist, writeWatchlist, rightPanelKey, type InstrumentSearchResult, type WatchlistItem } from './watchlist';
   import { chartStyles, isChartStyle, setPriceAppearance, type ChartStyleId } from './chart-styles';
@@ -18,16 +21,38 @@
   import { RustMarketDataProvider } from './data-provider';
   import './footprint';
   import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink } from './footprint';
-  import { ArrowLeftRight, BarChart3, ChevronDown, Eye, Minus, Settings2, Square, Undo2, Maximize2, CircleHelp, CandlestickChart, X, SlidersHorizontal, Bookmark, Search, Plus } from 'lucide-svelte';
+  import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Eye, Minus, Settings2, Square, Undo2, CandlestickChart, X, SlidersHorizontal, Bookmark, Search, Plus, UserRound, History, Layers, Sparkles, Target, Mountain, Radio, Bell, MessagesSquare, Grid3X3, CircleHelp } from 'lucide-svelte';
   let chartHost: HTMLDivElement;
   let chartArea: HTMLElement;
   let vela: Vela | undefined;
   let symbol = 'BTCUSDT';
   let venueId: TradeVenue = 'binance';
+  let tabPrice: number | null = null;
+  let tabPreviousClose: number | null = null;
+  let tabQuoteRequestId = 0;
+  let tabLiveRevision = 0;
   let timeframe = '1h';
   let chartStyle: ChartStyleId = 'candles';
   let appearanceOpen = false;
   let indicatorsOpen = false;
+  let pineOpen = false;
+  let pineEditor: PineEditor;
+  let pineScripts: SavedScript[] = [];
+  let pineError = '';
+  function persistPine(scripts: SavedScript[]) {
+    writeLibrary(window.localStorage, scripts);
+    pineScripts = scripts;
+  }
+  function editPine(script: SavedScript) { pineOpen = true; panelOpen = false; pineEditor.open(script); indicatorsOpen = false; }
+  async function addPine(script: SavedScript) {
+    try { await pineEditor.runSaved(script); pineError = ''; }
+    catch(error) { pineError = error instanceof Error ? error.message : String(error); }
+  }
+  function deletePine(script: SavedScript) {
+    if (!confirm('Delete saved indicator “'+script.name+'”? Its running chart instance will remain.')) return;
+    try { persistPine(pineScripts.filter(item=>item.id!==script.id)); pineEditor.detach(script.id); pineError=''; }
+    catch(error) { pineError=error instanceof Error ? error.message : String(error); }
+  }
   let appearance: ChartConfig | undefined;
   let defaultAppearance: ChartConfig;
   let appliedTheme: AppTheme = 'dark';
@@ -54,6 +79,11 @@
   setFeedHealthSink((next) => { if (next.venue !== venueId || next.instrument !== symbol) return; feedHealth = next; status = next.status === 'live' ? `Live · ${venue}` : next.status === 'error' ? `Feed issue · ${venue}` : `${next.status} · ${venue}`; });
   let clock = new Date();
   let timezone = defaultTimezone;
+  let timezonePickerOpen = false;
+  let rangePickerOpen = false;
+  let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  let customRangeStart = '';
+  let customRangeEnd = '';
   let footprintMode: FootprintMode = 'split';
   let footprintUnit: FootprintUnit = 'quote';
   let tickCount = 15;
@@ -65,8 +95,29 @@
   ];
   const intervals = ['1m', '5m', '15m', '1h', '4h', '1D'];
   onMount(() => {
+    try { pineScripts = readLibrary(window.localStorage); } catch(error) { pineError = String(error); }
     const chart = new Vela(chartHost, { symbol: chartSymbol(), timeframe: '60', bars: 500, live: true, theme: 'dark', upColor: '#8a746e', downColor: '#c16f61', currentPriceLine: true, volume: true, drawings: true, animations: { intro: false, zoom: true, pan: true } });
     vela = chart;
+    const refreshSymbolTabQuote = async () => {
+      const requestId = ++tabQuoteRequestId;
+      const requestedSymbol = symbol;
+      const requestedVenue = venueId;
+      const liveRevision = tabLiveRevision;
+      try {
+        const bars = await new RustMarketDataProvider(requestedVenue).getBars(requestedSymbol, '1D', { limit: 3 });
+        if (requestId !== tabQuoteRequestId || requestedSymbol !== symbol || requestedVenue !== venueId) return;
+        const latest = bars[bars.length - 1];
+        const previous = bars[bars.length - 2];
+        tabPreviousClose = previous && Number.isFinite(previous.close) ? previous.close : null;
+        if (tabLiveRevision === liveRevision) tabPrice = latest && Number.isFinite(latest.close) ? latest.close : null;
+      } catch { /* The chart feed remains the source of live tab prices. */ }
+    };
+    const offTabBar = chart.on('bar', (bar) => {
+      if (chart.market.symbol?.toUpperCase() !== chartSymbol().toUpperCase() || !Number.isFinite(bar.close)) return;
+      tabLiveRevision++;
+      tabPrice = bar.close;
+    });
+    const offTabLoad = chart.on('load:end', () => { void refreshSymbolTabQuote(); });
     let customDraft: unknown = null;
     let customSelection: string[] = [];
     const syncCustomDrawings = () => pushCustomDrawingData(chart.renderer, chart, customDraft, customSelection);
@@ -131,7 +182,7 @@
     if (panelOpen && watchlist.length) void refreshWatchlistQuotes();
     const resize = new ResizeObserver(() => chart.resize());
     resize.observe(chartHost);
-    return () => { quoteRequestId++; flushPreferences(); window.removeEventListener('pagehide', flushPreferences); offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); offCustomCreated(); offCustomEdited(); offCustomRemoved(); offCustomDraft(); offCustomSelection(); removeFeedHealth?.(); clearInterval(timer); clearInterval(quoteTimer); resize.disconnect(); chart.destroy(); };
+    return () => { quoteRequestId++; flushPreferences(); window.removeEventListener('pagehide', flushPreferences); offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); offCustomCreated(); offCustomEdited(); offCustomRemoved(); offCustomDraft(); offCustomSelection(); offTabBar(); offTabLoad(); removeFeedHealth?.(); clearInterval(timer); clearInterval(quoteTimer); resize.disconnect(); chart.destroy(); };
   });
   // Share the chart overlay with the renderer's indicator legend. Measure the
   // symbol block so wrapping/resizing never requires a fixed indicator offset.
@@ -143,10 +194,86 @@
     update();
     return { destroy() { observer.disconnect(); area?.style.removeProperty('--chart-symbol-height'); } };
   }
+  function openPlaceholderTool(name: string) { console.info(name + ' coming soon.'); }
+  function trackWorkspaceDockWidth(node: HTMLElement) {
+    const shell = node.closest('.app-shell') as HTMLElement | null;
+    const update = () => shell?.style.setProperty('--workspace-dock-width', node.getBoundingClientRect().width + 'px');
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    update();
+    return { destroy() { observer.disconnect(); shell?.style.removeProperty('--workspace-dock-width'); } };
+  }
   function timeframeCode(value: string) { return value === '1D' ? '1D' : value === '1h' ? '60' : value === '4h' ? '240' : value.slice(0, -1); }
   function chooseTimeframe(value: string) {
     timeframe = value;
     void vela?.setMarket({ symbol: chartSymbol(), timeframe: timeframeCode(value) });
+  }
+  function dateFieldValue(date: Date) {
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+  }
+  function shiftCalendarMonth(offset: number) {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + offset, 1);
+  }
+  function selectCalendarDate(value: string) {
+    if (!customRangeStart || customRangeEnd) {
+      customRangeStart = value;
+      customRangeEnd = '';
+      return;
+    }
+    if (value < customRangeStart) {
+      customRangeEnd = customRangeStart;
+      customRangeStart = value;
+    } else {
+      customRangeEnd = value;
+    }
+  }
+  function calendarDays() {
+    const month = calendarMonth.getMonth();
+    const first = new Date(calendarMonth.getFullYear(), month, 1);
+    const gridStart = new Date(first);
+    gridStart.setDate(1 - first.getDay());
+    const low = customRangeStart && customRangeEnd ? (customRangeStart < customRangeEnd ? customRangeStart : customRangeEnd) : '';
+    const high = customRangeStart && customRangeEnd ? (customRangeStart > customRangeEnd ? customRangeStart : customRangeEnd) : '';
+    const today = dateFieldValue(new Date());
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + index);
+      const value = dateFieldValue(date);
+      return { value, day: date.getDate(), inMonth: date.getMonth() === month, inRange: !!low && value >= low && value <= high, isStart: value === customRangeStart, isEnd: value === customRangeEnd, isToday: value === today };
+    });
+  }
+  function displayCalendarDate(value: string) {
+    return value ? new Date(value + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Select date';
+  }
+  function toggleRangePicker() {
+    if (!rangePickerOpen) {
+      if (!customRangeStart && !customRangeEnd) {
+        const end = new Date();
+        const start = new Date(end);
+        start.setDate(start.getDate() - 7);
+        customRangeStart = dateFieldValue(start);
+        customRangeEnd = dateFieldValue(end);
+      }
+      const anchor = customRangeEnd || customRangeStart;
+      const date = anchor ? new Date(anchor + 'T12:00:00') : new Date();
+      calendarMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    }
+    rangePickerOpen = !rangePickerOpen;
+    timezonePickerOpen = false;
+  }
+  function applyCustomDateRange() {
+    if (!customRangeStart || !customRangeEnd || customRangeStart > customRangeEnd) return;
+    const from = new Date(customRangeStart + 'T00:00:00').getTime();
+    const to = new Date(customRangeEnd + 'T23:59:59.999').getTime();
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return;
+    vela?.setVisibleRange({ from, to });
+    rangePickerOpen = false;
+  }
+  function formatTimezoneOffset(date: Date, zone: string) {
+    try {
+      const offset = new Intl.DateTimeFormat('en', { timeZone: zone, timeZoneName: 'shortOffset' }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value;
+      return offset?.replace(/^GMT/, 'UTC') ?? zone;
+    } catch { return zone; }
   }
   function chooseStyle(style: ChartStyleId) {
     if (!vela) return;
@@ -262,6 +389,10 @@
     const provider = item.provider as TradeVenue;
     venueId = provider;
     venue = providerTitle(item.provider);
+    tabQuoteRequestId++;
+    tabPrice = null;
+    tabPreviousClose = null;
+    tabLiveRevision++;
     setTradeVenue(provider);
     if (provider === 'narwhal' || provider === 'finzdata') timeframe = '1D';
     symbol = item.symbol;
@@ -344,13 +475,16 @@
     });
   }
 </script>
-<svelte:window onkeydown={(event) => { if (event.key === 'Escape' && styleMenuOpen) { styleMenuOpen = false; document.querySelector<HTMLButtonElement>('.chart-style')?.focus(); } }} onclick={(event) => { if (!(event.target as Element).closest('.style-picker')) styleMenuOpen = false; }}/>
+<svelte:window onkeydown={(event) => { if (event.key === 'Escape') { if (styleMenuOpen) { styleMenuOpen = false; document.querySelector<HTMLButtonElement>('.chart-style')?.focus(); } rangePickerOpen = false; timezonePickerOpen = false; } }} onclick={(event) => { const target = event.target as Element; if (!target.closest('.style-picker')) styleMenuOpen = false; if (!target.closest('.range-picker-anchor')) rangePickerOpen = false; if (!target.closest('.clock-control')) timezonePickerOpen = false; }}/>
 <svelte:head><title>DeplyzeView — {symbol}</title></svelte:head>
 <div class="app-shell" data-theme={extras.theme}>
-  <header class="titlebar" data-tauri-drag-region><div class="brand-mark" title="DeplyzeView"><img src={appIcon} alt="DeplyzeView" draggable="false"/></div><span class="brand-divider"></span><span class="workspace-label">Chart</span><div class="window-controls"><button aria-label="Minimize" onclick={() => windowAction('minimize')}><Minus size={12}/></button><button aria-label="Maximize" onclick={() => windowAction('maximize')}><Square size={10}/></button><button class="close" aria-label="Close" onclick={() => windowAction('close')}><X size={12}/></button></div></header>
+  <header class="titlebar" data-tauri-drag-region><SymbolTabBar tabs={[{ id: chartSymbol(), symbol, price: tabPrice, percentChange: tabPrice !== null && tabPreviousClose !== null && tabPreviousClose !== 0 ? ((tabPrice - tabPreviousClose) / tabPreviousClose) * 100 : null, icon: vela?.data.symbolIcon(chartSymbol()) }]} activeTabId={chartSymbol()} onAdd={() => console.info('Multi-tab coming soon.')}/><div class="window-controls"><button aria-label="Minimize" onclick={() => windowAction('minimize')}><Minus size={12}/></button><button aria-label="Maximize" onclick={() => windowAction('maximize')}><Square size={10}/></button><button class="close" aria-label="Close" onclick={() => windowAction('close')}><X size={12}/></button></div></header>
   <nav class="topbar">
-    <div class="market-selector">
-      <button class="symbol-button" aria-label="Search markets, current {symbol} from {venue}" onclick={() => searchOpen = true}><span class="exchange">{venue}</span><span class="symbol-line">{symbol}<Search size={11}/></span></button>
+    <div class="market-identity">
+      <button class="profile-avatar" type="button" aria-label="Profile settings coming soon" title="Profile settings coming soon" onclick={() => console.info('Profile settings coming soon.')}><UserRound size={16}/></button>
+      <div class="market-selector">
+        <button class="symbol-button" aria-label="Search markets, current {symbol} from {venue}" onclick={() => searchOpen = true}><span class="symbol-line"><span>{symbol}</span><Search size={12}/></span><span class="exchange">{venue}</span></button>
+      </div>
     </div>
     <div class="top-divider"></div><div class="timeframes">{#each intervals as interval}<button class:chosen={timeframe === interval} onclick={() => chooseTimeframe(interval)}>{interval}</button>{/each}<button class="more-time" aria-label="More intervals"><ChevronDown size={11}/></button></div>
     <div class="top-divider"></div><div class="style-picker"><button class="chart-style" aria-label="Chart style" aria-expanded={styleMenuOpen} class:style-selected={chartStyle !== 'candles'} onclick={() => styleMenuOpen = !styleMenuOpen} onkeydown={(e) => { if (e.key === 'Escape') styleMenuOpen = false; }}><CandlestickChart size={14}/><span>{chartStyles.find(style => style.id === chartStyle)?.label}</span><ChevronDown size={10}/></button>{#if styleMenuOpen}<div class="style-menu" role="group" aria-label="Chart styles">{#each chartStyles as style}<button class:menu-selected={chartStyle === style.id} aria-pressed={chartStyle === style.id} onclick={() => chooseStyle(style.id)}><CandlestickChart size={14}/>{style.label}{#if chartStyle === style.id}<span class="new-tag">SELECTED</span>{/if}</button>{/each}<div class="style-menu-note">Appearance controls in Chart settings</div></div>{/if}</div>
@@ -358,12 +492,13 @@
   </nav>
   <main class="chart-layout">{#if vela && chartArea}<ToolRail chart={vela} groups={drawingGroups} bind:prefs={extras.drawingTools} onClear={clearAllDrawings} onLockAll={setAllDrawingsLocked} onHideAll={setAllDrawingsHidden} modeOff={null} disabled={appearanceOpen || settingsOpen || indicatorsOpen || searchOpen}/>{:else}<aside class="drawing-toolbar" aria-label="Drawing tools"></aside>{/if}
     <section class="chart-area" bind:this={chartArea}><div class="chart-legend" use:measureSymbolLegend><div class="legend-main"><span class="pair-name">{symbol}</span></div>{#if chartStyle === 'footprint'}<div class="legend-sub">Bid × Ask</div>{/if}</div><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market chart"></div></div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
-      {#if indicatorsOpen && vela}<IndicatorPicker chart={vela} close={() => indicatorsOpen = false}/>{/if}
+      {#if indicatorsOpen && vela}<IndicatorPicker chart={vela} customScripts={pineScripts} customError={pineError} onCustomAdd={addPine} onCustomEdit={editPine} onCustomDelete={deletePine} close={() => indicatorsOpen = false}/>{/if}
       {#if appearanceOpen && appearance}<ChartAppearance config={appearance} {extras} {persistenceError} patch={applyAppearance} changeExtras={applyExtras} {chooseStyle} reset={resetAppearance} close={() => appearanceOpen = false}/>{/if}
       {#if settingsOpen}<div class="settings-scrim" role="presentation" onclick={() => settingsOpen = false}></div><dialog open class="settings-dialog" aria-modal="true" aria-labelledby="settings-title" style={settingsDialogPosition ? `left:${settingsDialogPosition.left}px;top:${settingsDialogPosition.top}px;transform:none` : undefined}><header class="dialog-titlebar" role="toolbar" aria-label="Move settings dialog" tabindex="0" onkeydown={nudgeSettingsDialog} onpointerdown={startSettingsDialogDrag} onpointermove={moveSettingsDialog} onpointerup={endSettingsDialogDrag} onpointercancel={endSettingsDialogDrag}><div><span class="dialog-kicker">CHART SETTINGS</span><h2 id="settings-title">Volume Footprint</h2></div><button class="dialog-close" aria-label="Close settings" onclick={() => settingsOpen = false}><X size={14}/></button></header><nav class="dialog-tabs">{#each tabs as tab}<button class:tab-active={settingsTab === tab} onclick={() => settingsTab = tab}>{tab}</button>{/each}</nav><div class="dialog-content"><div class="dialog-section-label">{settingsTab === 'General' ? 'GENERAL' : settingsTab.toUpperCase()}</div>{#if settingsTab === 'General'}<div class="setting-row"><div class="setting-name"><strong>Unit</strong><small>Volume denomination</small></div><div class="segmented"><button class:segment-active={footprintUnit === 'quote'} onclick={() => chooseUnit('quote')}>{feedHealth?.quoteCurrency ?? 'Quote'}</button><button class:segment-active={footprintUnit === 'coin'} onclick={() => chooseUnit('coin')}>Coin</button></div></div><div class="setting-row"><div class="setting-name"><strong>Ticks per bar</strong><small>Price levels per footprint row</small></div><div class="stepper"><button aria-label="Decrease ticks" onclick={() => changeTicks(tickCount - 1)}>−</button><input type="number" min="1" max="100" bind:value={tickCount} oninput={() => changeTicks(tickCount)}/><span>ticks</span><button aria-label="Increase ticks" onclick={() => changeTicks(tickCount + 1)}>+</button></div></div><div class="setting-row mode-row"><div class="setting-name"><strong>Display mode</strong><small>How trade volume is rendered</small></div><div class="mode-options">{#each modes as item}<button class:mode-active={footprintMode === item.id} onclick={() => chooseMode(item.id)}><span>{item.name}</span><small>{item.hint}</small>{#if footprintMode === item.id}<span class="selected-dot"></span>{/if}</button>{/each}</div></div><div class="data-note"><span class="live-indicator" class:health-error={feedHealth?.status === 'error' || (feedHealth?.gapsDetected ?? 0) > 0}></span><span><strong>{feedHealth?.status === 'live' ? 'Live trade feed' : feedHealth?.status === 'error' ? 'Feed needs attention' : 'Market data service'}</strong><small>{feedHealth ? `${feedHealth.tradesStored.toLocaleString()} stored trades · ${feedHealth.gapDetectionAvailable ? `${feedHealth.gapsDetected} gap(s)` : 'gap detection unavailable'}` : 'Waiting for Rust feed status…'}</small><small>{coverageText()}</small><small>{feedHealth?.historyNote ?? `${venue} public trade history`}</small>{#if feedHealth?.lastError}<small class="feed-error-text">{feedHealth.lastError}</small>{/if}</span></div>{:else}<div class="settings-placeholder"><div class="settings-placeholder-icon"><Settings2 size={17}/></div><strong>{settingsTab} settings</strong><span>Configure {settingsTab.toLowerCase()} visualization for the footprint chart.</span><div class="coming-chip">AVAILABLE IN THIS BUILD</div></div>{/if}</div><footer class="dialog-footer"><span class="footer-hint">Settings apply to the active chart</span><button class="done-button" onclick={() => settingsOpen = false}>Done</button></footer></dialog>{/if}
     </section>
-    <div class="workspace-dock">
-      {#if panelOpen}
+    <div class="workspace-dock" use:trackWorkspaceDockWidth>
+      {#if vela}<div style:display={pineOpen ? 'contents' : 'none'}><PineEditor chart={vela} scripts={pineScripts} persist={persistPine} bind:this={pineEditor}/></div>{/if}
+      {#if panelOpen && !pineOpen}
         <section class="watchlist-panel" aria-labelledby="watchlist-title">
           <header class="watchlist-header"><div><h2 id="watchlist-title">Watchlist</h2><small>{watchlist.length} saved{watchlist.length ? ` · ${watchlistQuotesLoading ? 'Updating' : '30s refresh'}` : ''}</small></div><button class="watchlist-add" aria-label="Add symbol to watchlist" title="Add symbol" onclick={() => searchOpen = true}><Plus size={16}/></button></header>
           <div class="watchlist-columns"><span>Instrument</span><span>Last</span><span>Change</span></div>
@@ -387,10 +522,23 @@
         </section>
       {/if}
       <nav class="workspace-rail" aria-label="Workspace panels">
-        <button class:rail-active={panelOpen} aria-label={panelOpen ? 'Close watchlist panel' : 'Open watchlist panel'} title="Watchlist" aria-pressed={panelOpen} onclick={toggleWorkspacePanel}><Bookmark size={17}/></button>
+        <button class:rail-active={panelOpen} aria-label={panelOpen ? 'Close watchlist panel' : 'Open watchlist panel'} title="Watchlist" aria-pressed={panelOpen} onclick={() => { pineOpen = false; toggleWorkspacePanel(); }}><Bookmark size={18}/></button>
+        <button class="rail-placeholder" type="button" aria-label="Alerts (coming soon)" title="Alerts (coming soon)" onclick={() => openPlaceholderTool('Alerts')}><History size={18}/></button>
+        <button class="rail-placeholder" type="button" aria-label="Object tree (coming soon)" title="Object tree (coming soon)" onclick={() => openPlaceholderTool('Object tree')}><Layers size={18}/></button>
+        <span class="rail-group-gap" aria-hidden="true"></span>
+        <button class="rail-placeholder" type="button" aria-label="Hotlists (coming soon)" title="Hotlists (coming soon)" onclick={() => openPlaceholderTool('Hotlists')}><Sparkles size={18}/></button>
+        <button class="rail-placeholder" type="button" aria-label="Screeners (coming soon)" title="Screeners (coming soon)" onclick={() => openPlaceholderTool('Screeners')}><Target size={18}/></button>
+        <button class:rail-active={pineOpen} type="button" aria-label="Pine Editor" title="Pine Editor" aria-pressed={pineOpen} onclick={() => { pineOpen = !pineOpen; panelOpen = false; }}><Mountain size={18}/></button>
+        <button class="rail-placeholder" type="button" aria-label="Calendar (coming soon)" title="Calendar (coming soon)" onclick={() => openPlaceholderTool('Calendar')}><CalendarDays size={18}/></button>
+        <button class="rail-placeholder" type="button" aria-label="Streams (coming soon)" title="Streams (coming soon)" onclick={() => openPlaceholderTool('Streams')}><Radio size={18}/></button>
+        <button class="rail-placeholder" type="button" aria-label="Notifications (coming soon)" title="Notifications (coming soon)" onclick={() => openPlaceholderTool('Notifications')}><Bell size={18}/></button>
+        <button class="rail-placeholder" type="button" aria-label="Chats (coming soon)" title="Chats (coming soon)" onclick={() => openPlaceholderTool('Chats')}><MessagesSquare size={18}/></button>
+        <button class="rail-placeholder apps-launcher" type="button" aria-label="More apps (coming soon)" title="More apps (coming soon)" onclick={() => openPlaceholderTool('More apps')}><Grid3X3 size={17}/></button>
+        <span class="rail-separator" aria-hidden="true"></span>
+        <button class="rail-placeholder" type="button" aria-label="Help center (coming soon)" title="Help center (coming soon)" onclick={() => openPlaceholderTool('Help center')}><CircleHelp size={18}/></button>
       </nav>
     </div>
   </main>
   {#if searchOpen}<SymbolSearch close={() => searchOpen = false} select={selectInstrument} add={addToWatchlist} isSaved={(item) => watchlist.some(saved => saved.identity === item.identity)}/>{/if}
-  <footer class="statusbar"><div class="range-options"><button onclick={() => vela?.setVisibleRangePreset('1D')}>1D</button><button onclick={() => vela?.setVisibleRangePreset('1W')}>1W</button><button onclick={() => vela?.setVisibleRangePreset('1M')}>1M</button><button onclick={() => vela?.setVisibleRangePreset('3M')}>3M</button><button onclick={() => vela?.setVisibleRangePreset('6M')}>6M</button><button onclick={() => vela?.setVisibleRangePreset('1Y')}>1Y</button><button onclick={() => vela?.setVisibleRangePreset('ALL')}>ALL</button><span class="status-divider"></span><button class="calendar-button"><BarChart3 size={12}/></button></div><div class="connection"><span class:connected={status.startsWith('Live')} class="connection-dot"></span>{status}</div><div class="clock">{formatClock(clock, timezone)}</div><select class="timezone-select" aria-label="Chart time zone" title="Chart and clock time zone" value={timezone} onchange={(event) => applyAppearance({ timeScale: { timezone: event.currentTarget.value } })}>{#each timezoneChoices(timezone) as zone}<option value={zone.value}>{zone.label}</option>{/each}</select><button class="fit-button"><Maximize2 size={12}/> Fit</button><button class="help-button"><CircleHelp size={13}/></button></footer>
+  <footer class="statusbar"><div class="range-options"><button onclick={() => vela?.setVisibleRangePreset('1D')}>1D</button><button onclick={() => vela?.setVisibleRangePreset('1W')}>1W</button><button onclick={() => vela?.setVisibleRangePreset('1M')}>1M</button><button onclick={() => vela?.setVisibleRangePreset('3M')}>3M</button><button onclick={() => vela?.setVisibleRangePreset('6M')}>6M</button><button onclick={() => vela?.setVisibleRangePreset('1Y')}>1Y</button><button onclick={() => vela?.setVisibleRangePreset('ALL')}>ALL</button><span class="status-divider"></span><div class="range-picker-anchor"><button class="calendar-button" type="button" aria-label="Choose custom chart date range" title="Custom date range" aria-haspopup="dialog" aria-expanded={rangePickerOpen} onclick={toggleRangePicker}><CalendarDays size={14}/></button>{#if rangePickerOpen}<div class="range-picker" role="dialog" aria-label="Custom chart date range"><strong>Custom date range</strong><div class="calendar-selection"><div><span>From</span><strong>{displayCalendarDate(customRangeStart)}</strong></div><div><span>To</span><strong>{displayCalendarDate(customRangeEnd)}</strong></div></div><div class="calendar-month-nav"><button type="button" aria-label="Previous month" onclick={() => shiftCalendarMonth(-1)}><ChevronLeft size={14}/></button><strong>{calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</strong><button type="button" aria-label="Next month" onclick={() => shiftCalendarMonth(1)}><ChevronRight size={14}/></button></div><div class="calendar-weekdays">{#each ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as weekday}<span>{weekday}</span>{/each}</div><div class="calendar-grid">{#each calendarDays() as day (day.value)}<button type="button" class="calendar-day" class:other-month={!day.inMonth} class:in-range={day.inRange} class:range-start={day.isStart} class:range-end={day.isEnd} class:today={day.isToday} aria-label={day.value} aria-pressed={day.isStart || day.isEnd} onclick={() => selectCalendarDate(day.value)}>{day.day}</button>{/each}</div><div class="range-picker-actions"><button type="button" class="range-cancel" onclick={() => rangePickerOpen = false}>Cancel</button><button type="button" class="range-apply" disabled={!customRangeStart || !customRangeEnd || customRangeStart > customRangeEnd} onclick={applyCustomDateRange}>Apply</button></div></div>{/if}</div></div><div class="clock-control"><button class="clock-button" type="button" aria-label="Current time and time zone preferences" title="Change time zone" aria-haspopup="dialog" aria-expanded={timezonePickerOpen} onclick={() => { timezonePickerOpen = !timezonePickerOpen; rangePickerOpen = false; }}><span class="clock">{formatClock(clock, timezone)}</span><span class="clock-zone">{formatTimezoneOffset(clock, timezone)}</span></button>{#if timezonePickerOpen}<div class="timezone-popover" role="dialog" aria-label="Time zone preference"><label for="clock-timezone">Time zone</label><select id="clock-timezone" class="timezone-select" aria-label="Chart time zone" title="Chart and clock time zone" value={timezone} onchange={(event) => { applyAppearance({ timeScale: { timezone: event.currentTarget.value } }); timezonePickerOpen = false; }}>{#each timezoneChoices(timezone) as zone}<option value={zone.value}>{zone.label}</option>{/each}</select></div>{/if}</div></footer>
 </div>
