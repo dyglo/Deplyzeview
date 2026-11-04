@@ -1,10 +1,16 @@
 <script lang="ts">
+  import type { SavedScript } from './pine/library';
   import { onMount } from 'svelte';
   import type { Vela } from '@luxalgo/vela';
   import type { NativeIndicatorInfo } from '@luxalgo/vela/plugin';
   import { Search, X, Plus, Check } from 'lucide-svelte';
   import { findIndicators, addCatalogIndicator } from './indicator-catalog';
   export let chart: Vela;
+  export let customScripts: SavedScript[] = [];
+  export let customError = '';
+  export let onCustomAdd: (script:SavedScript)=>void;
+  export let onCustomEdit: (script:SavedScript)=>void;
+  export let onCustomDelete: (script:SavedScript)=>void;
   export let close: () => void;
   let query = '';
   let catalog: NativeIndicatorInfo[] = [];
@@ -84,6 +90,11 @@
 <dialog open class="settings-dialog indicator-dialog" aria-modal="true" aria-labelledby="indicator-title" use:focusDialog>
   <header class="dialog-titlebar"><h2 id="indicator-title">Indicators</h2><button class="dialog-close" aria-label="Close indicators" onclick={close}><X size={17}/></button></header>
   <div class="indicator-search"><Search size={15}/><input aria-label="Search indicators" placeholder="Search indicators — EMA, RSI, moving average…" bind:value={query} onkeydown={(event) => { if (event.key === 'Enter' && !event.isComposing && !loading && !loadError) { const item = results.find(item => item.supported && !alreadyVisible(item)); if (item) { event.preventDefault(); add(item); } } }} oninput={() => { if (resultsHost) resultsHost.scrollTop = 0; }}/>{#if query}<button aria-label="Clear indicator search" onclick={() => query = ''}><X size={13}/></button>{/if}</div>
+  <div class="indicator-list-heading"><span>CUSTOM INDICATORS</span></div>
+  {#each customScripts.filter(item=>item.name.toLowerCase().includes(query.toLowerCase())) as script (script.id)}
+    <div class="indicator-result"><span>{script.name}</span><button onclick={()=>onCustomAdd(script)}>Add</button><button onclick={()=>onCustomEdit(script)}>Edit</button><button onclick={()=>onCustomDelete(script)}>Delete</button></div>
+  {/each}
+  {#if customError}<p role="alert">{customError}</p>{/if}
   <div class="indicator-list-heading"><span>BUILT-IN INDICATORS</span><span>{loading ? 'Loading…' : `${results.length} results`}</span></div>
   <div class="indicator-results" bind:this={resultsHost} aria-busy={loading}>
     {#if loading}<p class="indicator-empty" role="status">Loading indicators…</p>
