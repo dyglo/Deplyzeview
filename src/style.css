@@ -8,10 +8,7 @@
 .settings-dialog{margin:0;padding:0;max-width:none}
 .dialog-titlebar{cursor:grab;touch-action:none}.dialog-titlebar:active{cursor:grabbing}.dialog-titlebar button{cursor:pointer}
 /* Appearance controls extend the existing compact settings window. */
-/* Symbol and indicator labels share the plot; the symbol never reserves a header row. */
-.chart-legend{position:absolute;left:12px;top:8px;max-width:calc(100% - 24px);padding:0 0 4px;min-width:0;border:0;background:transparent}
-.chart-area [data-vela-pane="price"]{translate:0 var(--chart-symbol-height,0px)}
-.legend-main{flex-wrap:wrap;min-width:0}.pair-name,.legend-sub{overflow-wrap:anywhere}
+/* The renderer's statusline is the sole chart header; it keeps symbol and OHLC together. */
 .chart-plot{position:absolute;inset:0;min-height:0;min-width:0}
 /* Chart settings: category rail and compact controls, in VELA's palette. */
 .appearance-dialog{width:min(680px,calc(100% - 32px));height:min(520px,calc(100% - 32px));min-height:0;max-height:calc(100% - 32px);background:var(--tone-15161a,#15161a);border-color:var(--tone-30323a,#30323a)}
@@ -241,3 +238,34 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 .timeframes .timeframe-favorite.favorite-active:hover{color:var(--tone-d3d4d8,#d3d4d8)}
 .statusbar .range-options{margin-left:42px;flex:none}
 .multi-chart-controls{display:flex;align-items:center;gap:3px;flex:none}.layout-picker{display:flex;align-items:center;gap:1px;padding:2px;background:var(--tone-17181d,#17181d);border:1px solid var(--tone-292b32,#292b32);border-radius:4px}.layout-picker button{height:22px;min-width:23px;padding:0 4px;border-radius:3px;color:var(--tone-82858e,#82858e);font:9px "Roboto Mono",monospace}.layout-picker button:hover,.layout-picker button.layout-active{background:var(--tone-2a2c33,#2a2c33);color:var(--tone-e1e2e5,#e1e2e5)}.layout-picker button.layout-active{box-shadow:inset 0 0 0 1px var(--tone-45434b,#45434b)}.multi-chart-controls>button{height:25px;width:26px;display:grid;place-items:center;border:1px solid transparent;border-radius:3px;color:var(--tone-81848d,#81848d)}.multi-chart-controls>button:hover{background:var(--tone-25272d,#25272d);color:var(--tone-d5d6da,#d5d6da)}.multi-chart-controls>button.sync-active{color:#d08a79;background:var(--tone-292328,#292328);border-color:var(--tone-63463f,#63463f)}.vela-chart>.vela-workspace{position:absolute;inset:0;width:100%;height:100%;min-width:0;min-height:0;z-index:1}.vela-workspace>.vela-topbar,.vela-workspace>.vela-bottombar{display:none!important}.chart-area.multi-chart{--chart-symbol-height:0px}.chart-area.multi-chart>.chart-legend{display:none}.chart-area.multi-chart>.chart-bottom-controls .chart-watermark{display:none}.chart-area.multi-chart [data-vela-pane="price"]{translate:0 0!important}
+/* Bar Replay */
+.replay-toolbar-button{position:relative}
+.replay-toolbar-button.replay-active{color:#d6a18f;background:#2b2425}
+.replay-toolbar-button.replay-active::after{content:'';position:absolute;left:8px;right:8px;bottom:-1px;height:2px;background:#c38576;border-radius:2px}
+.replay-picker-line{position:absolute;top:0;bottom:0;width:1px;background:#d49b86;z-index:5;pointer-events:none;box-shadow:0 0 0 1px #d49b8622}
+.replay-picker-line::before,.replay-picker-line::after{content:'';position:absolute;left:-4px;width:9px;height:1px;background:#d49b86}
+.replay-picker-line::before{top:0}.replay-picker-line::after{bottom:0}
+.replay-picker-line span{position:absolute;top:9px;left:8px;white-space:nowrap;padding:4px 6px;border:1px solid #5b413a;border-radius:3px;background:#211b1c;color:#e7c0b2;font-size:9px;letter-spacing:.1px}
+.replay-future-dim{position:absolute;top:0;right:0;bottom:0;background:linear-gradient(90deg,#17181d18,#17181d55);z-index:4;pointer-events:none}
+.replay-pick-panel,.replay-panel{position:absolute;left:50%;bottom:13px;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:9px;min-height:34px;padding:4px 8px;border:1px solid #383a43;border-radius:5px;background:#1d1f25eF;box-shadow:0 5px 18px #0006;color:#bfc1c8;font-size:10px;backdrop-filter:blur(8px)}
+.replay-pick-panel svg{color:#c38576}
+.replay-pick-panel button,.replay-panel button{border:0;background:transparent;color:#92959e;font:inherit;cursor:pointer}
+.replay-pick-panel button:hover,.replay-panel button:hover{color:#e1e2e6}
+.replay-panel{gap:5px;padding:3px 6px}
+.replay-select{display:flex;align-items:center;gap:5px;padding:4px 7px!important;color:#c8c9cf!important}
+.replay-select svg{color:#c38576}
+.replay-control{display:grid;place-items:center;width:26px;height:26px;border-radius:3px}
+.replay-control:hover{background:#2b2d35}
+.replay-panel-divider{width:1px;height:18px;background:#3b3d45;margin:0 3px}
+.replay-speeds{display:flex;align-items:center;gap:1px;padding:0 2px}
+.replay-speeds button{min-width:35px;padding:5px 4px;border-radius:3px;color:#858892;font-size:9px}
+.replay-speeds button.chosen{background:#342a2b;color:#d9a18f}
+.replay-time{min-width:92px;text-align:center;color:#aeb0b8;font-size:9px;font-variant-numeric:tabular-nums}
+.replay-exit{display:flex;align-items:center;gap:4px;padding:4px 7px!important}
+.replay-notice{position:absolute;left:50%;bottom:57px;transform:translateX(-50%);z-index:9;padding:6px 10px;border:1px solid #5a3d38;border-radius:4px;background:#241b1c;color:#e1b4a5;font-size:10px;box-shadow:0 4px 14px #0005}
+@media(max-width:760px){.replay-panel{left:8px;right:8px;transform:none;justify-content:center}.replay-time{display:none}.replay-speeds button{min-width:30px}.replay-pick-panel{left:8px;right:8px;transform:none;justify-content:center}}
+
+/* Minor chart UI cleanup: use Vela's single statusline header and keep the plot seamless. */
+.chart-area,.vela-chart,.vela-chart>.vela-workspace{border:0!important}
+.vela-chart .vela-statusline{top:4px}
+.vela-chart>.vela-workspace [data-vela-pane]{border-top:0!important;border-right:0!important;border-bottom:0!important}
