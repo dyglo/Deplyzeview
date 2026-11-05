@@ -8,7 +8,7 @@ export function workerJob<T>(source:string, bars?:Bar[]): {promise:Promise<T>;ca
   const cleanup = () => { clearTimeout(timer); worker.terminate(); };
   const promise = new Promise<T>((resolve,reject) => {
     rejectJob = reject;
-    timer = setTimeout(() => { cleanup(); reject(new Error('Pine execution exceeded five seconds. Simplify the script or reduce history.')); },5000);
+    timer = setTimeout(() => { cleanup(); reject(new Error('DeplyzeView runtime limit: Pine execution exceeded the five-second worker cap. The script may be valid Pine; reduce history or computation to fit this editor limit.')); },5000);
     worker.onmessage = event => { cleanup(); event.data.ok ? resolve(event.data.result) : reject(new Error(event.data.error)); };
     worker.onerror = event => { cleanup(); reject(new Error(event.message || 'Pine worker failed.')); };
     worker.postMessage({source,bars});
@@ -27,7 +27,8 @@ export function toModel(id:string, output:Output):IndicatorModel {
     inputs:output.inputs as unknown as IndicatorModel['inputs'],inputValues:output.inputValues,fills:[],backgrounds:[],priceLines:[],
     lines:output.lines as unknown as NonNullable<IndicatorModel['lines']>,
     boxes:output.boxes as unknown as NonNullable<IndicatorModel['boxes']>,
-    labels:output.labels as unknown as NonNullable<IndicatorModel['labels']>
+    labels:output.labels as unknown as NonNullable<IndicatorModel['labels']>,
+    tables:output.tables as unknown as NonNullable<IndicatorModel['tables']>
   };
 }
 export class NativePineEngine implements ScriptingEngine {
@@ -68,9 +69,9 @@ export class NativePineEngine implements ScriptingEngine {
       timer=setTimeout(()=>{
         if(stopped || current!==revision)return;
         worker?.terminate();worker=undefined;inflight=false;
-        handlers.onError?.(new Error('Pine execution exceeded five seconds. Reduce script complexity or history.'));
+        handlers.onError?.(new Error('DeplyzeView runtime limit: Pine execution exceeded the five-second worker cap. The script may be valid Pine; reduce script complexity or history to fit this editor limit.'));
       },5000);
-      worker.postMessage({source,bars:request.getBars?.() ?? request.bars,inputs:inputValues,revision:current});
+      worker.postMessage({source,bars:request.getBars?.() ?? request.bars,inputs:inputValues,isLive:request.mode==='live',revision:current});
     };
     const schedule = () => { if (!stopped && scheduled === undefined) scheduled = setTimeout(execute,50); };
     schedule();

@@ -39,3 +39,24 @@ test('restoration removes duplicate identities and ignores malformed entries wit
 test('storage write failure is safely reported', () => {
   assert.equal(writeWatchlist({ setItem() { throw new Error('quota'); } }, []), false);
 });
+
+import { readWatchlists, watchlistsKey, watchlistCategory, reorderWatchlist, formatWatchlistNumber } from './watchlist.ts';
+test('named lists migrate legacy symbols and restore the active list independently', () => {
+  const rows = [instrument('oanda', 'EUR_USD', 'cfd')];
+  const legacy = readWatchlists({ getItem: key => key === watchlistKey ? JSON.stringify(rows) : null });
+  assert.deepEqual(legacy.lists[0].items, rows);
+  const saved = { activeId: 'fx', lists: [...legacy.lists, { id: 'fx', name: 'Forex', items: [] }] };
+  assert.deepEqual(readWatchlists({ getItem: key => key === watchlistsKey ? JSON.stringify(saved) : null }), saved);
+});
+test('categories and reordering preserve instrument identities and category boundaries', () => {
+  const a = instrument('binance', 'BTCUSDT');
+  const b = instrument('binance', 'ETHUSDT');
+  const c = { ...instrument('oanda', 'EUR_USD', 'cfd'), assetClass: 'forex' };
+  assert.equal(watchlistCategory(c), 'Forex');
+  assert.equal(watchlistCategory(instrument('finzdata', 'ES', 'exchange_futures')), 'Futures');
+  assert.deepEqual(reorderWatchlist([a,b,c], a.identity,b.identity), [b,a,c]);
+  assert.deepEqual(reorderWatchlist([a,b,c], a.identity,c.identity), [a,b,c]);
+  assert.equal(formatWatchlistNumber(1.0876,c), '1.08760');
+  assert.equal(formatWatchlistNumber(-0.00032,c,true), '−0.00032');
+  assert.equal(formatWatchlistNumber(null,c), '—');
+});

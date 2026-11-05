@@ -8,7 +8,7 @@ type Field = {name:string; type:string; initial?:Expr};
 type PineFunction = {params:Array<{name:string;type:string;defaultValue?:Expr}>; body:Statement[]; resultType?:string};
 export type Bar = { time: number; open: number; high: number; low: number; close: number; volume?: number };
 type Expr = { token: Token; op: string; value?: Value; args: Expr[]; names?: (string | undefined)[]; constant?: Value; type?: string; id: number; inputKey?:string };
-type Statement = { token: Token; kind: 'declare' | 'assign' | 'expression' | 'if' | 'for-range' | 'for-each'; name?: string; persistent?: boolean; annotation?: string; expr: Expr; yes?: Statement[]; no?: Statement[]; loopNames?: string[]; end?: Expr; step?: Expr; body?: Statement[] };
+type Statement = { token: Token; kind: 'declare' | 'assign' | 'expression' | 'if' | 'for-range' | 'for-each' | 'while' | 'break' | 'continue'; name?: string; persistent?: boolean; annotation?: string; expr: Expr; yes?: Statement[]; no?: Statement[]; loopNames?: string[]; end?: Expr; step?: Expr; body?: Statement[] };
 export type Plot = { kind: string; expr: Expr; args?:Expr[]; title: string; color: string; width: number; shape: string; location: string };
 export interface Program {
   statements: Statement[];
@@ -22,8 +22,15 @@ export interface Program {
 export type DrawModel = Record<string,unknown> & {id:string};
 export type TableModel = {id:string;paneId:string;position:string;columns:number;rows:number;bgColor?:string;frameColor?:string;frameWidth:number;borderColor?:string;borderWidth:number;cells:Array<Array<PineTableCell|null>>;merges:never[];overlay?:boolean};
 export class ScriptError extends Error {
-  constructor(message: string, token: Token) { super(`Line ${token.start.line}, column ${token.start.column}: ${message}`); this.name = 'ScriptError'; }
+  readonly stage:'compile'|'runtime';
+  readonly line:number;
+  readonly column:number;
+  constructor(message: string, token: Token, stage:'compile'|'runtime'='compile') {
+    super(`Pine v5 ${stage} error (line ${token.start.line}, column ${token.start.column}): ${message}`);
+    this.name='ScriptError';this.stage=stage;this.line=token.start.line;this.column=token.start.column;
+  }
 }
+class LoopControl { readonly kind:'break'|'continue'; constructor(kind:'break'|'continue'){this.kind=kind;} }
 const colors: Record<string, string> = { aqua:'#00BCD4', black:'#363A45', blue:'#2196F3', fuchsia:'#E040FB', gray:'#787B86', green:'#4CAF50', lime:'#00E676', maroon:'#880E4F', navy:'#311B92', olive:'#808000', orange:'#FF9800', purple:'#9C27B0', red:'#F23645', silver:'#B2B5BE', teal:'#089981', white:'#FFFFFF', yellow:'#FDD835' };
 const constants: Record<string, Value> = { true:true, false:false, na:null, 'shape.triangleup':'triangleUp', 'shape.triangledown':'triangleDown', 'location.abovebar':'aboveBar', 'location.belowbar':'belowBar', 'size.tiny':'tiny','size.small':'small','size.normal':'normal','xloc.bar_time':'bar_time','xloc.bar_index':'bar_index','extend.right':'right','extend.left':'left','extend.both':'both','extend.none':'none','line.style_dashed':'dashed','line.style_solid':'solid','label.style_label_up':'label_up','label.style_label_down':'label_down','label.style_label_left':'label_left','label.style_label_right':'label_right','position.top_left':'top_left','position.top_center':'top_center','position.top_right':'top_right','position.middle_left':'middle_left','position.middle_center':'middle_center','position.middle_right':'middle_right','position.bottom_left':'bottom_left','position.bottom_center':'bottom_center','position.bottom_right':'bottom_right','text.align_left':'left','text.align_center':'center','text.align_right':'right','text.align_top':'top','text.align_bottom':'bottom', ...Object.fromEntries(Object.entries(colors).map(([k,v]) => ['color.'+k,v])) };
 const signatures: Record<string, string[]> = {
@@ -32,13 +39,17 @@ const signatures: Record<string, string[]> = {
   'chart.point.new':['time','index','price'], 'box.new':['left','top','right','bottom','border_color','border_width','border_style','extend','xloc','bgcolor','text','text_color','text_size','text_halign','text_valign'], 'line.new':['x1','y1','x2','y2','xloc','extend','color','style','width'], 'label.new':['x','y','text','xloc','yloc','color','style','textcolor','size','textalign','tooltip'],
   indicator:['title','shorttitle','overlay','max_labels_count','max_lines_count','max_boxes_count'], plot:['series','title','color','linewidth'], hline:['price','title','color'], plotcandle:['open','high','low','close','title','color','wickcolor','editable','show_last','bordercolor'], alertcondition:['condition','title','message'],
   plotshape:['series','title','style','location','color'], 'ta.sma':['source','length'], 'ta.ema':['source','length'],
-  'ta.rsi':['source','length'], 'ta.stdev':['source','length','biased'], 'ta.atr':['length'], 'ta.highest':['source','length'], 'ta.lowest':['source','length'], 'ta.change':['source'], 'ta.cum':['source'], 'ta.crossover':['source1','source2'], 'ta.crossunder':['source1','source2'], na:['x'], nz:['source','replacement']
+  'ta.rsi':['source','length'], 'ta.stdev':['source','length','biased'], 'ta.atr':['length'], 'ta.highest':['source','length'], 'ta.lowest':['source','length'], 'ta.change':['source'], 'ta.cum':['source'], 'ta.crossover':['source1','source2'], 'ta.crossunder':['source1','source2'], 'ta.tr':['handle_na'], na:['x'], nz:['source','replacement']
 };
 const precedence: Record<string, number> = { or:1, and:2, '==':3, '!=':3, '<':4, '>':4, '<=':4, '>=':4, '+':5, '-':5, '*':6, '/':6, '%':6 };
 export function compile(source: string): Program {
   const tokens = tokenize(source);
   const fail = (message: string, token = tokens[position]) : never => { throw new ScriptError(message, token); };
-  if (!/^\s*\/\/@version=5\s*$/m.test(source) || (source.match(/\/\/@version=/g)?.length ?? 0) !== 1) throw new ScriptError('Exactly one //@version=5 directive is required.', tokens[0]);
+  const versionDirectives=source.match(/^\s*\/\/@version\s*=\s*\d+\s*$/gm)??[];
+  if(versionDirectives.length>1)throw new ScriptError('Pine source must contain only one version directive.',tokens[0]);
+  const versionMatch=/^\s*\/\/@version\s*=\s*(\d+)\s*$/m.exec(source);
+  if(!versionMatch)throw new ScriptError('This editor requires an explicit //@version=5 directive. TradingView treats an omitted version as v1; that is a version-support limitation, not a Pine syntax error.',tokens[0]);
+  if(versionMatch[1]!=='5')throw new ScriptError(`This editor supports Pine v5 only; the script declares v${versionMatch[1]}. The declared version is not itself invalid Pine.`,tokens[0]);
   let position = 0, nextId = 0, depth = 0;
   const peek = () => tokens[position];
   const take = () => tokens[position++];
@@ -108,18 +119,22 @@ export function compile(source: string): Program {
     while (peek().kind !== 'eof' && peek().kind !== 'dedent') {
       if (peek().kind === 'newline') { take(); continue; }
       const token = peek();
+      if(!nested&&['strategy','library'].includes(token.value)&&tokens[position+1]?.value==='(')fail('DeplyzeView currently executes indicator() scripts only. Pine strategies and libraries require features this editor does not provide; this is an editor capability limit, not a Pine syntax error.',token);
+      if(token.value==='varip')fail('Pine v5 varip is valid, but this editor does not replay realtime ticks or implement intrabar rollback persistence. This is an editor execution-model limitation, not a Pine syntax error.',token);
+      if(['switch','import','export'].includes(token.value))fail(`Pine v5 supports "${token.value}", but this editor subset does not implement it yet. This is an editor capability limit, not a Pine syntax error.`,token);
       if (!nested && isFunctionHeader()) {
         const name=take().value; take();
         if(functions.has(name)) fail('Duplicate function '+name,token);
         const params:PineFunction['params']=[];
-        if(!accept(')')) {
+      if(!accept(')')) {
           do {
-            const typeToken=take();
-            if(!['int','float','bool','string','color','pivot','trend','orderBlock','alerts','trailingExtremes','label','line','box'].includes(typeToken.value)) fail('Expected typed function parameter.',typeToken);
-            if(peek().kind!=='identifier') fail('Expected function parameter name.');
-            const param=take().value;
+            const supportedTypes=['int','float','bool','string','color','pivot','trend','orderBlock','alerts','trailingExtremes','label','line','box'];
+            let type='any',param='';
+            if(supportedTypes.includes(peek().value)&&tokens[position+1]?.kind==='identifier') {type=scalarType(take().value);param=take().value;}
+            else if(peek().kind==='identifier') param=take().value;
+            else fail('Expected a Pine function parameter name.');
             const defaultValue=accept('=') ? expression() : undefined;
-            params.push({name:param,type:scalarType(typeToken.value),defaultValue});
+            params.push({name:param,type,defaultValue});
           } while(accept(','));
           expect(')');
         }
@@ -208,13 +223,23 @@ export function compile(source: string): Program {
         const body=block(true);
         statements.push({token,kind,expr,end,step,loopNames,body}); continue;
       }
+      if(accept('while')) {
+        const expr=expression();if(take().kind!=='newline')fail('Expected newline after while condition.');
+        while(peek().kind==='newline')take();if(take().kind!=='indent')fail('Expected indented while body.');
+        statements.push({token,kind:'while',expr,body:block(true)});continue;
+      }
+      if(accept('break')||accept('continue')) {
+        const kind=tokens[position-1].value as 'break'|'continue';
+        const expr:Expr={token,op:'literal',value:null,args:[],id:nextId++};
+        statements.push({token,kind,expr});continue;
+      }
       const persistent = !!accept('var');
       let annotation: string | undefined;
       if (peek().value === 'array' && tokens[position+1]?.value === '<') {
         take(); take();
         if (!['float','int','bool','string','box','line','label'].includes(peek().value) && !records.has(peek().value)) fail('Unsupported array element type.');
         const element = take().value; expect('>'); annotation = 'array<'+scalarType(element)+'>';
-      } else if (['float','int','bool','string','line','label','box','table'].includes(peek().value) || records.has(peek().value)) annotation = take().value;
+      } else if ((['float','int','bool','string','color','line','label','box','table'].includes(peek().value) || records.has(peek().value)) && tokens[position+1]?.kind==='identifier' && ['=',':='].includes(tokens[position+2]?.value)) annotation = take().value;
       if (peek().kind === 'identifier' && tokens[position+1]?.value === '.' && tokens[position+2]?.kind === 'identifier' && tokens[position+3]?.value === ':=') {
         const owner=take().value; take(); const field=take().value; take();
         statements.push({token,kind:'assign',name:owner+'.'+field,expr:expression()});
@@ -233,13 +258,47 @@ export function compile(source: string): Program {
   function scalarType(type:string) { return type==='int' || type==='float' ? 'number' : type==='bool' ? 'boolean' : type==='color' ? 'string' : type; }
   const statements = block();
   if (peek().kind !== 'eof') fail('Unexpected indentation.');
-  const symbols = new Map<string, {type:string; constant?:Value}>();
-  for (const name of ['open','high','low','close','volume','time','bar_index']) symbols.set(name, {type:'number'});
-  for (const name of ['last_bar_time','last_bar_index']) symbols.set(name,{type:'number'});
-  for (const name of ['barstate.isfirst','barstate.islast','barstate.islastconfirmedhistory','barstate.isconfirmed']) symbols.set(name,{type:'boolean'});
-  symbols.set('ta.tr',{type:'number'});
+  const symbols = new Map<string, {type:string; constant?:Value;series?:boolean;integer?:boolean;intDeclared?:boolean}>();
+  for (const name of ['open','high','low','close','volume']) symbols.set(name, {type:'number',series:true,integer:false});
+  for (const name of ['time','bar_index','last_bar_time','last_bar_index']) symbols.set(name, {type:'number',series:true,integer:true});
+  for (const name of ['barstate.isfirst','barstate.islast','barstate.islastconfirmedhistory','barstate.isconfirmed']) symbols.set(name,{type:'boolean',series:true});
+  symbols.set('ta.tr',{type:'number',series:true});
   const program: Program = {statements, plots:[], records, functions, meta:{title:'', overlay:false}, drawingLimits:{},inputs:[]};
   let declaration = false;
+  const isSeries=(node:Expr):boolean=>{
+    if(node.op==='literal')return false;
+    if(node.op==='name')return symbols.get(String(node.value))?.series??false;
+    if(node.op==='history')return true;
+    if(node.op==='call') {
+      const name=String(node.value);
+      if(name.startsWith('input'))return false;
+      if(name.startsWith('math.'))return node.args.some(isSeries);
+      return true;
+    }
+    return node.args.some(isSeries);
+  };
+  const isInteger=(node:Expr):boolean=>{
+    if(node.op==='literal')return node.value===null||(typeof node.value==='number'&&Number.isInteger(node.value));
+    if(node.op==='name') {
+      const value=String(node.value);
+      if(Object.prototype.hasOwnProperty.call(constants,value))return typeof constants[value]==='number'&&Number.isInteger(constants[value]);
+      return symbols.get(value)?.integer??false;
+    }
+    if(node.op==='history')return isInteger(node.args[0]);
+    if(node.op==='ternary')return isInteger(node.args[1])&&isInteger(node.args[2]);
+    if(node.op==='unary:+'||node.op==='unary:-')return isInteger(node.args[0]);
+    if(['+','-','*','%'].includes(node.op))return node.args.every(isInteger);
+    if(node.op==='call') {
+      if(['math.round','math.floor','math.ceil'].includes(String(node.value)))return true;
+      if(node.value==='nz')return isInteger(node.args[0])&&(!node.args[1]||isInteger(node.args[1]));
+      if(node.value==='ta.change')return isInteger(node.args[0]);
+      if(['math.max','math.min'].includes(String(node.value)))return node.args.every(isInteger);
+      if(node.value==='input.int')return true;
+      if(node.value==='input')return typeof node.args[0]?.constant==='number'&&Number.isInteger(Number(node.args[0].constant));
+      return false;
+    }
+    return false;
+  };
   function check(node: Expr, conditional = false): string {
     const error = (message: string): never => fail(message, node.token);
     if (node.op === 'literal') { node.constant = node.value!; return node.type = typeof node.value; }
@@ -252,7 +311,10 @@ export function compile(source: string): Program {
         if (member && name === owner+'.'+field) return node.type=member.type;
       }
       const entry = symbols.get(name);
-      if (!entry) error('Unknown or unsupported identifier '+name);
+      if (!entry) {
+        if(/^(?:ta|math|request|strategy|map|matrix|str|timeframe|syminfo|ticker|array|line|label|box|table)\./.test(name))error(`Pine namespace member "${name}" is not implemented by this editor subset. Check the v5 spelling or use a supported feature; the source may still be valid Pine.`);
+        error(`Undeclared identifier "${name}". Declare it before use, or verify its spelling.`);
+      }
       if (entry!.constant !== undefined) node.constant = entry!.constant;
       return node.type = entry!.type;
     }
@@ -263,21 +325,21 @@ export function compile(source: string): Program {
         node.args.forEach(arg=>check(arg,conditional));
         return node.type='array';
       }
-      if (arrayMethod) {
+      if(arrayMethod&&!['math','ta','color','table'].includes(arrayMethod[1])) {
         const owner = symbols.get(arrayMethod[1]);
-        if (!owner || !owner.type.startsWith('array<')) error('Array method receiver must be an array.');
+        if(!owner||!owner.type.startsWith('array<'))error('Array method receiver must be an array.');
         node.args.forEach(arg=>check(arg,conditional));
         return node.type = arrayMethod[2] === 'size' || arrayMethod[2] === 'indexof' ? 'number' : arrayMethod[2] === 'get' || arrayMethod[2] === 'pop' || arrayMethod[2] === 'shift' ? owner!.type.slice(6,-1) : 'void';
       }
       const fn=functions.get(name);
       if(fn) {
         if(node.args.length>fn.params.length || node.args.length<fn.params.filter(param=>!param.defaultValue).length) error('Incorrect function argument count.');
-        node.args.forEach((arg,i)=>{ if(check(arg,conditional)!==fn.params[i].type) fail('Function argument type mismatch.',arg.token); });
+        node.args.forEach((arg,i)=>{ const got=check(arg,conditional);if(fn.params[i].type!=='any'&&got!==fn.params[i].type)fail('Function argument type mismatch: expected '+fn.params[i].type+', received '+got+'.',arg.token); });
         const tail=fn.body[fn.body.length-1]?.expr;
         fn.resultType=tail && ['==','!=','<','>','<=','>=','and','or'].includes(tail.op) ? 'boolean' : 'number';
         return node.type=fn.resultType;
       }
-      if(['math.max','math.min','math.avg','math.round','math.log','math.sqrt'].includes(name)) {
+      if(['math.abs','math.max','math.min','math.avg','math.round','math.log','math.log10','math.sqrt','math.floor','math.ceil','math.pow','math.exp','math.sign'].includes(name)) {
         node.args.forEach(arg=>{if(check(arg,conditional)!=='number')fail('Math functions require numeric arguments.',arg.token);});
         if(!node.args.length)error('Math functions require arguments.');
         return node.type='number';
@@ -306,7 +368,7 @@ export function compile(source: string): Program {
         return node.type='void';
       }
       const signature = Object.prototype.hasOwnProperty.call(signatures,name) ? signatures[name] : undefined;
-      if (!signature) throw new ScriptError('Unsupported function '+name,node.token);
+      if (!signature) throw new ScriptError(`Pine function "${name}" is not implemented by this editor subset. The script may be valid Pine; this message identifies a DeplyzeView capability limit, not a Pine syntax error.`,node.token);
       const ordered: Expr[] = [];
       let named = false;
       node.args.forEach((arg,i) => {
@@ -432,24 +494,34 @@ export function compile(source: string): Program {
         program.plots.push({kind:name,expr:ordered[0],title,color,width,shape,location});
         return node.type = 'void';
       }
+      if(name==='ta.tr') {
+        if(ordered[0]&&ordered[0].type!=='boolean')fail('ta.tr(handle_na) expects a Boolean argument.',ordered[0].token);
+        return node.type='number';
+      }
       if (name.startsWith('ta.')) {
         if (conditional) error('Stateful TA calls must execute unconditionally.');
         if(['ta.highest','ta.lowest'].includes(name)&&node.args.length===1) {
           const length=check(node.args[0],conditional);
-          if(length!=='number'||typeof node.args[0].constant!=='number'||!Number.isInteger(node.args[0].constant)||Number(node.args[0].constant)<1)error('Length must be a positive constant integer.');
+          if(length!=='number'||!isInteger(node.args[0]))error('Length must be an integer value.');
           return node.type='number';
         }
-        for (let i=0;i<signature.length;i++) requireArg(i,'number');
         if(name==='ta.stdev') {
           requireArg(0,'number');
-          const length=requireArg(1,'number',true).constant;
-          if(typeof length!=='number'||!Number.isInteger(length)||length<1||length>5000)error('Length must be a constant integer from 1 to 5000.');
+          const lengthArg=requireArg(1,'number');
+          const length=lengthArg.constant;
+          if(!isInteger(ordered[1]))fail('TA length must be an int; this expression is not statically an integer.',ordered[1].token);
+          if(['ta.ema','ta.rsi','ta.atr'].includes(name)&&isSeries(ordered[1]))fail(name+' requires a simple int length; a series int changes from bar to bar.',ordered[1].token);
+          if(length!==undefined&&(typeof length!=='number'||!Number.isInteger(length)||length<1||length>5000))error('Length must be an integer from 1 to 5000.');
           if(ordered[2]&&ordered[2].type!=='boolean')error('ta.stdev biased argument must be Boolean.');
           return node.type='number';
         }
+        for (let i=0;i<signature.length;i++) requireArg(i,'number');
         if (['ta.sma','ta.ema','ta.rsi','ta.atr','ta.highest','ta.lowest'].includes(name)) {
-          const length = requireArg(signature.length-1,'number',true).constant;
-          if (typeof length !== 'number' || !Number.isInteger(length) || length < 1 || length > 5000) error('Length must be a constant integer from 1 to 5000.');
+          const lengthArg=requireArg(signature.length-1,'number');
+          const length=lengthArg.constant;
+          if(!isInteger(ordered[signature.length-1]))fail('TA length must be an int; this expression is not statically an integer.',ordered[signature.length-1].token);
+          if(['ta.ema','ta.rsi','ta.atr'].includes(name)&&isSeries(ordered[signature.length-1]))fail(name+' requires a simple int length; a series int changes from bar to bar.',ordered[signature.length-1].token);
+          if (length!==undefined&&(typeof length !== 'number' || !Number.isInteger(length) || length < 1 || length > 5000)) error('Length must be an integer from 1 to 5000.');
         }
         return node.type = name.includes('cross') ? 'boolean' : 'number';
       }
@@ -483,28 +555,34 @@ export function compile(source: string): Program {
     if (node.args.every(arg => arg.constant !== undefined)) node.constant = operation(node.op, node.args.map(arg => arg.constant!));
     return node.type;
   }
-  function validate(list: Statement[], conditional = false) {
+  function validate(list: Statement[], conditional = false, loopDepth=0) {
     const locals: string[] = [];
     for (const statement of list) {
       const type = check(statement.expr, conditional);
-      if (statement.kind === 'for-range' || statement.kind === 'for-each') {
+      if(statement.kind==='break'||statement.kind==='continue') {
+        if(loopDepth===0)fail(`${statement.kind} can only be used inside a loop.`,statement.token);
+      } else if (statement.kind === 'for-range' || statement.kind === 'for-each') {
         const firstType=check(statement.expr,conditional);
         if (statement.kind==='for-range') {
           if (firstType!=='number' || !statement.end || check(statement.end,conditional)!=='number' || (statement.step && check(statement.step,conditional)!=='number')) fail('Numeric for-loop bounds and step must be numbers.',statement.token);
         } else if (!firstType.startsWith('array<')) fail('For-in loop requires an array.',statement.token);
         const prior=statement.loopNames!.map(name=>[name,symbols.get(name)] as const);
         statement.loopNames!.forEach((name,i)=>symbols.set(name,{type:statement.kind==='for-range'||i===0?'number':firstType.slice(6,-1)}));
-        validate(statement.body!,true);
+        validate(statement.body!,true,loopDepth+1);
         for (const [name,value] of prior) value ? symbols.set(name,value) : symbols.delete(name);
+      } else if(statement.kind==='while') {
+        if(type!=='boolean')fail('Pine while condition must be Boolean.',statement.token);
+        validate(statement.body!,true,loopDepth+1);
       } else if (statement.kind === 'if') {
         if (type !== 'boolean') fail('If requires a Boolean condition.', statement.token);
-        validate(statement.yes!,true); validate(statement.no!,true);
+        validate(statement.yes!,true,loopDepth); validate(statement.no!,true,loopDepth);
       } else if (statement.kind === 'declare') {
         const name = statement.name!;
         if (symbols.has(name) || Object.prototype.hasOwnProperty.call(constants,name)) fail('Duplicate or reserved variable '+name,statement.token);
         const expected = statement.annotation?.startsWith('array<') ? 'array' : statement.annotation ? scalarType(statement.annotation) : type;
         if (type === 'void' || (type !== expected && statement.expr.constant !== null)) fail('Invalid declaration type.',statement.token);
-        symbols.set(name,{type:statement.annotation?.startsWith('array<') ? statement.annotation : type,constant:statement.persistent ? undefined : statement.expr.constant}); locals.push(name);
+        if(statement.annotation==='int'&&!isInteger(statement.expr)&&statement.expr.constant!==null)fail('Pine int declaration requires an integer expression.',statement.expr.token);
+        symbols.set(name,{type:statement.annotation?.startsWith('array<') ? statement.annotation : type,constant:statement.persistent ? undefined : statement.expr.constant,series:isSeries(statement.expr),integer:statement.annotation==='int'?true:statement.annotation==='float'?false:isInteger(statement.expr),intDeclared:statement.annotation==='int'}); locals.push(name);
         if(statement.expr.op==='call'&&String(statement.expr.value).startsWith('input')) {
           const call=statement.expr,args=call.args,kind=String(call.value);
           const get=(key:string)=>args[call.names?.indexOf(key)??-1];
@@ -530,7 +608,10 @@ export function compile(source: string): Program {
         const entry = symbols.get(statement.name!);
         if (!entry || ['open','high','low','close','volume','time','bar_index'].includes(statement.name!) || entry.type !== type) fail('Invalid reassignment.',statement.token);
         entry!.constant = undefined;
-      } else if (statement.expr.op !== 'call' || (!['indicator','plot','hline','plotshape','plotcandle','alertcondition'].includes(String(statement.expr.value)) && !functions.has(String(statement.expr.value)) && !/^[A-Za-z_]\w*\.(?:push|unshift|pop|shift|set|remove|clear|delete|set_[a-z_]+)$/.test(String(statement.expr.value)))) fail('Expected declaration, assignment or supported method call.',statement.token);
+        entry!.series=isSeries(statement.expr);
+        if(entry!.intDeclared&&!isInteger(statement.expr))fail('Cannot assign a non-integer value to an int variable.',statement.token);
+        entry!.integer=isInteger(statement.expr);
+      } else if (statement.expr.op !== 'call' || (!['indicator','plot','hline','plotshape','plotcandle','alertcondition','table.cell','table.clear','table.delete'].includes(String(statement.expr.value)) && !functions.has(String(statement.expr.value)) && !/^[A-Za-z_]\w*\.(?:push|unshift|pop|shift|set|remove|clear|delete|set_[a-z_]+)$/.test(String(statement.expr.value)))) fail('Expected declaration, assignment or supported method call.',statement.token);
     }
   }
   for (const fields of records.values()) for (const field of fields) {
@@ -584,19 +665,23 @@ export class RuntimeSession {
   private checkpoint:ExecutionState | undefined;
   readonly program:Program;
   private inputValues:Record<string,number|string|boolean>={};
+  private previousLive=false;
   constructor(program:Program) {this.program=program;}
-  run(bars:Bar[],inputValues:Record<string,number|string|boolean>={}):Output {
-    if(JSON.stringify(this.inputValues)!==JSON.stringify(inputValues)){this.checkpoint=undefined;this.inputValues={...inputValues};}
+  run(bars:Bar[],inputValues:Record<string,number|string|boolean>={},isLive=false):Output {
+    if(JSON.stringify(this.inputValues)!==JSON.stringify(inputValues)||this.previousLive!==isLive){this.checkpoint=undefined;this.inputValues={...inputValues};}
     const prefix = this.previous.length-1;
     const samePrefix = prefix >= 0 && bars.length >= this.previous.length && this.previous.slice(0,prefix).every((bar,i)=> ['time','open','high','low','close','volume'].every(key=>bar[key as keyof Bar]===bars[i][key as keyof Bar]));
     const resume = samePrefix && this.checkpoint ? structuredClone(this.checkpoint) : undefined;
-    const result = evaluate(this.program,bars,resume,state=>{this.checkpoint=structuredClone(state);},this.inputValues);
+    const result = evaluate(this.program,bars,resume,state=>{this.checkpoint=structuredClone(state);},this.inputValues,isLive);
     this.previous=bars.map(bar=>({...bar}));
+    this.previousLive=isLive;
     return result;
   }
 }
-export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, checkpoint?:(state:ExecutionState)=>void,inputValues:Record<string,number|string|boolean>={}): Output {
-  if (bars.length > 10000) throw new Error('History exceeds 10,000 bars.');
+export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, checkpoint?:(state:ExecutionState)=>void,inputValues:Record<string,number|string|boolean>={},isLive=false): Output {
+  const runtimeToken:Token={kind:'eof',value:'',start:{offset:0,line:1,column:1},end:{offset:0,line:1,column:1}};
+  const runtimeError=(message:string,token:Token=runtimeToken)=>new ScriptError(message,token,'runtime');
+  if (bars.length > 10000) throw runtimeError('History exceeds DeplyzeView’s 10,000-bar execution limit.');
   const variables = resume?.variables ?? new Map<string,Value>();
   const history = resume?.history ?? new Map<string,Value[]>();
   const calls = resume?.calls ?? new Map<string,Value[][]>();
@@ -610,11 +695,11 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
   let operations = 0, drawSequence=0;
   for (let index=resume?.index ?? 0; index<bars.length; index++) {
     if (index === bars.length-1) checkpoint?.({variables,history,calls,drawings:drawingRegistry,tables:tableRegistry,output,index});
-    if ((variables.size+calls.size*4+program.plots.length)*bars.length > 2_000_000) throw new Error('Series memory limit exceeded. Reduce history or script size.');
+    if ((variables.size+calls.size*4+program.plots.length)*bars.length > 2_000_000) throw runtimeError('DeplyzeView series-memory limit exceeded. Reduce history or script size.');
     const bar = bars[index], cache = new Map<string,Value>();
     const plotValues = new Map<number,Value>();
     const candleValues = new Map<number,Value[]>();
-    if (!Number.isFinite(bar.time) || (index && bar.time <= bars[index-1].time)) throw new Error('Bars must have strictly increasing finite timestamps.');
+    if (!Number.isFinite(bar.time) || (index && bar.time <= bars[index-1].time)) throw runtimeError('Chart bars must have strictly increasing finite timestamps.');
     for (const name of ['open','high','low','close','volume'] as const) variables.set(name, Number.isFinite(bar[name]) ? bar[name]! : null);
     variables.set('time',bar.time);
     variables.set('bar_index',index);
@@ -622,11 +707,11 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
     variables.set('last_bar_index',bars.length-1);
     variables.set('barstate.isfirst',index===0);
     variables.set('barstate.islast',index===bars.length-1);
-    variables.set('barstate.islastconfirmedhistory',index===bars.length-1);
-    variables.set('barstate.isconfirmed',true);
-    variables.set('ta.tr',index===0?bar.high-bar.low:Math.max(bar.high-bar.low,Math.abs(bar.high-bars[index-1].close),Math.abs(bar.low-bars[index-1].close)));
+    variables.set('barstate.islastconfirmedhistory',index===bars.length-(isLive?2:1));
+    variables.set('barstate.isconfirmed',!isLive||index<bars.length-1);
+    variables.set('ta.tr',index===0?null:Math.max(bar.high-bar.low,Math.abs(bar.high-bars[index-1].close),Math.abs(bar.low-bars[index-1].close)));
     function run(node:Expr): Value {
-      if (++operations > 20_000_000) throw new ScriptError('Execution operation limit exceeded.',node.token);
+      if (++operations > 20_000_000) throw runtimeError('DeplyzeView execution operation limit exceeded.',node.token);
       const cacheKey=`${callStack.join('/')}:${node.id}`;
       if (cache.has(cacheKey)) return cache.get(cacheKey)!;
       if (node.op === 'literal') return node.value!;
@@ -641,7 +726,7 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
       if (node.op === 'history') {
         const offsetValue=node.args[1].constant ?? run(node.args[1]);
         const offset=Number(offsetValue);
-        if(!Number.isInteger(offset)||offset<0||offset>5000)throw new ScriptError('History offset must be an integer from 0 to 5000.',node.token);
+        if(!Number.isInteger(offset)||offset<0||offset>5000)throw runtimeError('History offset must be an integer from 0 to 5000.',node.token);
         const sourceName=String(node.args[0].value);
         if(['open','high','low','close','volume','time','bar_index'].includes(sourceName)) {
           if(sourceName==='bar_index')return index-offset>=0?index-offset:null;
@@ -665,10 +750,40 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
         return returned ?? null;
       }
       const args = node.args.map(run);
-      if(name==='math.max')return Math.max(...args.map(Number));
-      if(name==='math.min')return Math.min(...args.map(Number));
-      if(name==='math.avg')return args.reduce<number>((sum,v)=>sum+Number(v),0)/args.length;
-      if(name==='math.round')return Math.round(Number(args[0]));
+      if(name==='math.max')return args.some(value=>value===null)?null:Math.max(...args.map(Number));
+      if(name==='math.min')return args.some(value=>value===null)?null:Math.min(...args.map(Number));
+      if(name==='math.avg')return args.some(value=>value===null)?null:args.reduce<number>((sum,v)=>sum+Number(v),0)/args.length;
+      if(name==='math.round')return args[0]===null?null:Math.round(Number(args[0]));
+      if(name==='math.abs')return args[0]===null?null:Math.abs(Number(args[0]));
+      if(name==='math.log')return args[0]===null?null:Math.log(Number(args[0]));
+      if(name==='math.log10')return args[0]===null?null:Math.log10(Number(args[0]));
+      if(name==='math.sqrt')return args[0]===null?null:Math.sqrt(Number(args[0]));
+      if(name==='math.floor')return args[0]===null?null:Math.floor(Number(args[0]));
+      if(name==='math.ceil')return args[0]===null?null:Math.ceil(Number(args[0]));
+      if(name==='math.pow')return args.some(value=>value===null)?null:Math.pow(Number(args[0]),Number(args[1]));
+      if(name==='math.exp')return args[0]===null?null:Math.exp(Number(args[0]));
+      if(name==='math.sign')return args[0]===null?null:Math.sign(Number(args[0]));
+      if(name==='ta.tr')return index===0?(args[0]===true?bar.high-bar.low:null):Math.max(bar.high-bar.low,Math.abs(bar.high-bars[index-1].close),Math.abs(bar.low-bars[index-1].close));
+      if(name==='table.new') {
+        const columns=Math.trunc(Number(args[1])),rows=Math.trunc(Number(args[2]));
+        if(!Number.isInteger(columns)||!Number.isInteger(rows)||columns<1||rows<1||columns*rows>10000)throw runtimeError('Table dimensions must be positive integers with at most 10,000 cells.',node.token);
+        const id=`pine-table-${index}-${node.id}`;
+        const table:PineTable={__pineTable:true,id,deleted:false,position:String(args[0]??'top_right'),columns,rows,bgColor:typeof args[3]==='string'?args[3]:undefined,frameColor:typeof args[4]==='string'?args[4]:undefined,frameWidth:Number(args[5]??0),borderColor:typeof args[6]==='string'?args[6]:undefined,borderWidth:Number(args[7]??0),cells:Array.from({length:rows},()=>Array.from({length:columns},()=>null)),merges:[],overlay:args[8]===true};
+        tableRegistry.set(id,table);return table;
+      }
+      if(name==='table.cell') {
+        const table=args[0];if(!table||typeof table!=='object'||!('__pineTable'in table))throw runtimeError('table.cell requires a table handle.',node.token);
+        const col=Math.trunc(Number(args[1])),row=Math.trunc(Number(args[2]));if(col<0||row<0||col>=table.columns||row>=table.rows)throw runtimeError('Table cell coordinates are outside the table.',node.token);
+        table.cells[row][col]={text:args[3]===null||args[3]===undefined?'':String(args[3]),...(typeof args[6]==='string'?{textColor:args[6]}:{}),...(typeof args[7]==='string'?{bgColor:args[7]}:{}),hAlign:['left','center','right'].includes(String(args[8]))?String(args[8]) as PineTableCell['hAlign']:'center',vAlign:['top','center','bottom'].includes(String(args[9]))?String(args[9]) as PineTableCell['vAlign']:'center',textSize:typeof args[10]==='number'?args[10]:String(args[10]??'normal'),...(typeof args[11]==='string'?{tooltip:args[11]}:{}),fontFamily:args[12]==='monospace'?'monospace':'default',bold:false,italic:false,...(typeof args[4]==='number'?{width:args[4]}:{}),...(typeof args[5]==='number'?{height:args[5]}:{})};return null;
+      }
+      if(name==='table.clear') {
+        const table=args[0];if(!table||typeof table!=='object'||!('__pineTable'in table))throw runtimeError('table.clear requires a table handle.',node.token);
+        const c1=Math.max(0,Math.trunc(Number(args[1]??0))),r1=Math.max(0,Math.trunc(Number(args[2]??0))),c2=Math.min(table.columns-1,Math.trunc(Number(args[3]??table.columns-1))),r2=Math.min(table.rows-1,Math.trunc(Number(args[4]??table.rows-1)));
+        for(let row=r1;row<=r2;row++)for(let col=c1;col<=c2;col++)table.cells[row][col]=null;return null;
+      }
+      if(name==='table.delete') {
+        const table=args[0];if(!table||typeof table!=='object'||!('__pineTable'in table))throw runtimeError('table.delete requires a table handle.',node.token);table.deleted=true;return null;
+      }
       if(name==='plotcandle'){candleValues.set(node.id,args);return null;}
       if(name==='alertcondition')return null;
       if(name==='color.new') return typeof args[0]==='string' ? withTransparency(args[0],Number(args[1]??0)) : null;
@@ -713,7 +828,7 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
       const drawingCall=/^(.*)\.(delete|set_[a-z_]+)$/.exec(name);
       if(drawingCall) {
         const object=variables.get(resolve(drawingCall[1]));
-        if(!object||typeof object!=='object'||!('__pineDrawing'in object)) throw new ScriptError('Drawing method receiver is not a drawing object.',node.token);
+        if(!object||typeof object!=='object'||!('__pineDrawing'in object)) throw runtimeError('Drawing method receiver is not a drawing object.',node.token);
         const drawing=object as PineDrawing, method=drawingCall[2];
         if(method==='delete') drawing.deleted=true;
         else if(['set_point','set_first_point','set_second_point','set_top_left_point','set_bottom_right_point'].includes(method)) {
@@ -734,7 +849,7 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
       const arrayCall=/^(.*)\.((?:push|unshift|pop|shift|get|set|size|remove|clear|indexof|max|min|slice))$/.exec(name);
       if (arrayCall) {
         const array=variables.get(resolve(arrayCall[1]));
-        if (!Array.isArray(array)) throw new ScriptError('Array method receiver is not an array.',node.token);
+        if (!Array.isArray(array)) throw runtimeError('Array method receiver is not an array.',node.token);
         const index=Math.trunc(Number(args[0] ?? 0));
         switch(arrayCall[2]) {
           case 'push': array.push(args[0] ?? null); return null;
@@ -767,9 +882,19 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
       const callId=`${callStack.join('/')}:${node.id}`;
       let state = calls.get(callId);
       if (!state) { state = [[],[],[],[]]; calls.set(callId,state); }
-      const length = Number(args[args.length-1]);
+      const length = Number(name==='ta.stdev'?args[1]:args[args.length-1]);
+      if(name.startsWith('ta.')&&['ta.sma','ta.ema','ta.rsi','ta.atr','ta.stdev','ta.highest','ta.lowest'].includes(name)&&(!Number.isInteger(length)||length<1||length>5000))throw runtimeError('TA length must be an integer from 1 to 5000.',node.token);
       let result: Value = null;
-      if (name.includes('cross')) {
+      if(name==='ta.stdev') {
+        const sample=args[0];if(sample!==null)state[0].push(sample);
+        while(state[0].length>length)state[0].shift();
+        if(state[0].length===length) {
+          const mean=state[0].reduce<number>((sum,value)=>sum+Number(value),0)/length;
+          const sumSquares=state[0].reduce<number>((sum,value)=>sum+(Number(value)-mean)**2,0);
+          const biased=args[2]===undefined?true:Boolean(args[2]);
+          if(biased||length>1)result=Math.sqrt(sumSquares/(biased?length:length-1));
+        }
+      } else if (name.includes('cross')) {
         const previous = state[0];
         result = args[0] !== null && args[1] !== null && previous.length === 2 && previous[0] !== null && previous[1] !== null &&
           (name === 'ta.crossover' ? Number(args[0]) > Number(args[1]) && Number(previous[0]) <= Number(previous[1]) : Number(args[0]) < Number(args[1]) && Number(previous[0]) >= Number(previous[1]));
@@ -794,7 +919,7 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
         if (name === 'ta.atr') value = index === 0 ? bar.high-bar.low : Math.max(bar.high-bar.low,Math.abs(bar.high-bars[index-1].close),Math.abs(bar.low-bars[index-1].close));
         if (name === 'ta.sma') {
           if (value !== null) state[0].push(value);
-          if (state[0].length > length) state[0].shift();
+          while (state[0].length > length) state[0].shift();
           if (state[0].length === length) result = state[0].reduce<number>((sum,v)=>sum+Number(v),0)/length;
         } else if (name === 'ta.ema') {
           if (value !== null) state[0][0] = state[0].length ? 2/(length+1)*Number(value)+(1-2/(length+1))*Number(state[0][0]) : value;
@@ -829,29 +954,34 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
     function statements(list:Statement[]):Value|undefined {
       let returned:Value|undefined;
       for (const statement of list) {
+        if(statement.kind==='break'||statement.kind==='continue')throw new LoopControl(statement.kind);
         if (statement.kind === 'if') returned=statements(run(statement.expr) ? statement.yes! : statement.no!);
-        else if (statement.kind === 'for-range' || statement.kind === 'for-each') {
-          const oldLoop=statement.loopNames!.map(name=>[resolve(name),variables.has(resolve(name)),variables.get(resolve(name))] as const);
+        else if (statement.kind === 'for-range' || statement.kind === 'for-each' || statement.kind==='while') {
+          const loopNames=statement.loopNames??[];
+          const oldLoop=loopNames.map(name=>[resolve(name),variables.has(resolve(name)),variables.get(resolve(name))] as const);
           const declarations:Statement[]=[];
           const collect=(items:Statement[])=>items.forEach(item=>{if(item.kind==='declare')declarations.push(item);if(item.yes)collect(item.yes);if(item.no)collect(item.no);if(item.body)collect(item.body);});
           collect(statement.body!);
           const oldLocals=declarations.map(item=>[resolve(item.name!),variables.has(resolve(item.name!)),variables.get(resolve(item.name!))] as const);
           let count=0;
-          const executeBody=(values:Value[])=>{
-            if (++count>10000) throw new ScriptError('Loop iteration limit exceeded.',statement.token);
-            statement.loopNames!.forEach((name,i)=>variables.set(define(name),values[i] ?? null));
+          const executeBody=(values:Value[]):'break'|'continue'|undefined=>{
+            if (++count>10000) throw runtimeError('DeplyzeView loop execution limit exceeded 10,000 iterations on this bar.',statement.token);
+            loopNames.forEach((name,i)=>variables.set(define(name),values[i] ?? null));
             for(const local of declarations) if(!local.persistent) variables.delete(resolve(local.name!));
-            statements(statement.body!);
+            try {statements(statement.body!);return undefined;}
+            catch(error){if(error instanceof LoopControl)return error.kind;throw error;}
           };
           if(statement.kind==='for-range') {
             const from=Number(run(statement.expr)), to=Number(run(statement.end!));
             const step=Number(statement.step ? run(statement.step) : 1);
-            if(!Number.isFinite(from)||!Number.isFinite(to)||!Number.isFinite(step)||step<=0) throw new ScriptError('For-loop bounds must be finite and step positive.',statement.token);
-            for(let value=from;value<=to;value+=step) executeBody([value]);
-          } else {
+            if(!Number.isFinite(from)||!Number.isFinite(to)||!Number.isFinite(step)||step<=0) throw runtimeError('For-loop bounds must be finite and step positive.',statement.token);
+            for(let value=from;value<=to;value+=step)if(executeBody([value])==='break')break;
+          } else if(statement.kind==='for-each') {
             const target=run(statement.expr);
-            if(!Array.isArray(target)) throw new ScriptError('For-in loop value is not an array.',statement.token);
-            for(let i=0;i<target.length;i++) executeBody([i,target[i]]);
+            if(!Array.isArray(target)) throw runtimeError('For-in loop value is not an array.',statement.token);
+            for(let i=0;i<target.length;i++)if(executeBody([i,target[i]])==='break')break;
+          } else {
+            while(Boolean(run(statement.expr)))if(executeBody([])==='break')break;
           }
           for(const [name,had,value] of [...oldLoop,...oldLocals]) had ? variables.set(name,value ?? null) : variables.delete(name);
         }
@@ -859,7 +989,7 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
         else if (statement.kind==='assign' && statement.name!.includes('.')) {
           const [owner,field]=statement.name!.split('.');
           const record=variables.get(resolve(owner));
-          if (!(record instanceof Map)) throw new ScriptError('Cannot assign a field on a missing record.',statement.token);
+            if (!(record instanceof Map)) throw runtimeError('Cannot assign a field on a missing record.',statement.token);
           record.set(field,run(statement.expr));
         }
         else if(statement.kind==='assign') variables.set(resolve(statement.name!),run(statement.expr));
@@ -871,6 +1001,7 @@ export function evaluate(program:Program, bars:Bar[], resume?:ExecutionState, ch
       return returned;
     }
     statements(program.statements);
+    output.tables=Array.from(tableRegistry.values()).filter(table=>!table.deleted).map(table=>({id:table.id,paneId:'',position:table.position,columns:table.columns,rows:table.rows,...(table.bgColor?{bgColor:table.bgColor}:{}),...(table.frameColor?{frameColor:table.frameColor}:{}),frameWidth:table.frameWidth,...(table.borderColor?{borderColor:table.borderColor}:{}),borderWidth:table.borderWidth,cells:table.cells.map(row=>row.map(cell=>cell?{...cell}:null)),merges:table.merges,overlay:table.overlay}));
     const objects=Array.from(drawingRegistry.values()).filter(drawing=>!drawing.deleted);
     const model=(d:PineDrawing):DrawModel=>{
       const get=(key:string)=>d.fields.get(key);

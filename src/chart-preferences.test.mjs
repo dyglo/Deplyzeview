@@ -1,9 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readPreferences, writePreferences, defaultExtras, preferenceKey } from './chart-preferences.ts';
+import { readPreferences, writePreferences, defaultCandleColors, defaultExtras, preferenceKey } from './chart-preferences.ts';
+import { themeAppearance } from './chart-theme.ts';
 import { chartStyles } from './chart-style-catalog.ts';
 
 const storage = (value) => ({ getItem: () => value });
+test('default and custom candle colors persist in both themes without changing other settings', () => {
+  const customColors = {
+    upColor: '#8a746e', downColor: '#c16f61',
+    wickUpColor: '#123456', wickDownColor: '#654321',
+    borderUpColor: 'rgba(8, 153, 129, 0.35)', borderDownColor: '#c16f6180',
+  };
+  for (const theme of ['light', 'dark']) {
+    // Theme templates must not overwrite defaults or independently customized colors.
+    assert.equal('candles' in themeAppearance(theme), false);
+    for (const colors of [defaultCandleColors, customColors]) {
+      const config = {
+        ...themeAppearance(theme), series: { style: 'candles', spacing: 7 },
+        candles: { ...colors, bodyVisible: false, wickVisible: true, borderVisible: false },
+        bars: { upColor: '#8a746e', downColor: '#c16f61' },
+        timeScale: { timezone: 'Africa/Nairobi' },
+      };
+      const extras = { ...defaultExtras, theme };
+      let saved;
+      assert.equal(writePreferences({ setItem(key, value) { saved = value; } }, config, extras), true);
+      assert.deepEqual(readPreferences(storage(saved)), { version: 1, config, extras });
+      const legacy = readPreferences({ getItem(key) { return key === 'vela.workspace.chart.appearance.v1' ? saved : null; } });
+      assert.deepEqual(legacy, { version: 1, config, extras });
+    }
+  }
+});
 test('missing, corrupt, incompatible and inaccessible saved preferences are safe', () => {
   for (const value of [null, '{', 'null', '{}', '{"version":2,"config":{}}']) assert.equal(readPreferences(storage(value)), undefined);
   assert.equal(readPreferences({ getItem() { throw new Error('denied'); } }), undefined);

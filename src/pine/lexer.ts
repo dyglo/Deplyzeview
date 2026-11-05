@@ -9,7 +9,7 @@ export class PineDiagnostic extends Error {
   readonly stage = 'lex';
   readonly location: SourceLocation;
   constructor(message: string, location: SourceLocation) {
-    super(message);
+    super(`Pine v5 lexical error (line ${location.line}, column ${location.column}): ${message}`);
     this.name = 'PineDiagnostic';
     this.location = location;
   }

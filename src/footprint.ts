@@ -12,7 +12,7 @@ export type TradeVenue = 'binance' | 'coinbase' | 'hyperliquid' | 'oanda' | 'nar
 export const isGatewayVenue = (venue: TradeVenue) => ['oanda', 'narwhal', 'finzdata'].includes(venue);
 export type FeedHealth = { venue: string; instrument: string; status: string; lastMessageMs?: number | null; coverageStartMs?: number | null; coverageEndMs?: number | null; tradesStored: number; gapsDetected: number; gapDetectionAvailable: boolean; quoteCurrency?: string; historyNote: string; lastError?: string | null };
 export type FootprintHistory = { venue: string; instrument: string; bars: Array<{ time: number; levels: Array<Level & { price: number }> }>; step: number; ticksPerRow: number; coverageStartMs?: number | null; coverageEndMs?: number | null; trades: number; sourceEventIds: string[]; gapsDetected: number; historyNote: string; quoteCurrency: string };
-type BucketUpdate = { venue: string; instrument: string; barTime: number; price: number; bid: number; ask: number; bidQuote: number; askQuote: number; sourceEventId: string };
+type NormalizedTrade = { venue: string; instrument: string; timestampMs: number; price: number; size: number; aggressorSide: 'buy' | 'sell'; sourceEventId: string; contractMultiplier: number };
 
 let mode: FootprintMode = 'split';
 let unit: FootprintUnit = 'quote';
@@ -50,12 +50,17 @@ function createFootprintEngine(): SeriesDataEngine {
   let venue = activeVenue;
   let instrument = '';
   let rowStep = 0.01 * ticksPerRow;
+  let engineTicksPerRow = ticksPerRow;
+  let tradeTickSize = 0.01;
+  let contractMultiplier = 1;
+  let subscriberId = '';
+  let subscriptionRequest: Promise<unknown> | undefined;
   let payload: FootprintData = { bars: [], step: rowStep, ticksPerRow };
   const data = new Map<number, Map<number, Level>>();
   const repaint = () => { if (active && host) host.pushData(payload); };
   const processedEventIds = new Set<string>();
   let historyLoaded = false;
-  let pendingUpdates: BucketUpdate[] = [];
+  let pendingUpdates: NormalizedTrade[] = [];
   let unlistenTrades: UnlistenFn | undefined;
   let unlistenHealth: UnlistenFn | undefined;
   let restartRequested = false;
@@ -66,16 +71,25 @@ function createFootprintEngine(): SeriesDataEngine {
     payload = { bars, step: rowStep, ticksPerRow };
     host.pushData(payload);
   };
-  const mergeUpdate = (event: BucketUpdate) => {
+  const mergeUpdate = (event: NormalizedTrade) => {
     if (!matching(event.venue, event.instrument) || processedEventIds.has(event.sourceEventId)) return;
     processedEventIds.add(event.sourceEventId);
     if (processedEventIds.size > 100_000) processedEventIds.delete(processedEventIds.values().next().value!);
-    let levels = data.get(event.barTime);
-    if (!levels) data.set(event.barTime, levels = new Map());
-    const level = levels.get(event.price) ?? { bid: 0, ask: 0, bidQuote: 0, askQuote: 0 };
-    level.bid += event.bid; level.ask += event.ask;
-    level.bidQuote += event.bidQuote; level.askQuote += event.askQuote;
-    levels.set(event.price, level);
+    const tickSize = Math.max(tradeTickSize, Number.EPSILON);
+    const rowTicks = Math.max(1, engineTicksPerRow);
+    const rowStep = tickSize * rowTicks;
+    const priceTick = Math.round(event.price / tickSize);
+    const rowIndex = Math.floor(priceTick / rowTicks);
+    const price = rowIndex * rowStep + rowStep / 2;
+    const barTime = Math.floor(event.timestampMs / intervalMs) * intervalMs;
+    let levels = data.get(barTime);
+    if (!levels) data.set(barTime, levels = new Map());
+    const level = levels.get(price) ?? { bid: 0, ask: 0, bidQuote: 0, askQuote: 0 };
+    const size = event.size * (Number.isFinite(event.contractMultiplier) ? event.contractMultiplier : contractMultiplier);
+    const quote = event.price * size;
+    if (event.aggressorSide === 'sell') { level.bid += size; level.bidQuote += quote; }
+    else { level.ask += size; level.askQuote += quote; }
+    levels.set(price, level);
     if (data.size > 2_000) data.delete(Math.min(...data.keys()));
     flush();
   };
@@ -83,11 +97,21 @@ function createFootprintEngine(): SeriesDataEngine {
     unlistenTrades?.(); unlistenTrades = undefined;
     unlistenHealth?.(); unlistenHealth = undefined;
   };
+  const releaseFeed = async () => {
+    const id = subscriberId;
+    subscriberId = '';
+    if (!id) return;
+    const release = () => invoke('unsubscribe_market_feed', { venue, instrument, subscriberId: id }).catch(() => undefined);
+    const request = subscriptionRequest;
+    if (request) await request.then(release, release);
+    else await release();
+    if (subscriptionRequest === request) subscriptionRequest = undefined;
+  };
   const restart = async () => {
     if (!active || !host) return;
     restartRequested = true;
     await removeListeners();
-    try { await invoke('unsubscribe_market_feed', { venue, instrument }); } catch { /* The feed may not have started yet. */ }
+    await releaseFeed();
     if (!active) return;
     restartRequested = false;
     await initialize();
@@ -106,14 +130,19 @@ function createFootprintEngine(): SeriesDataEngine {
     historyLoaded = false;
     pendingUpdates = [];
     try {
-      // Buffer live buckets until the durable history snapshot is applied; event IDs prevent double-counting.
-      unlistenTrades = await listen<BucketUpdate>('trade-bucket-update', (event) => { if (historyLoaded) mergeUpdate(event.payload); else pendingUpdates.push(event.payload); });
+      // Buffer raw live trades until the durable history snapshot is applied; each chart
+      // applies its own timeframe and row size, so sibling charts cannot alter its buckets.
+      unlistenTrades = await listen<NormalizedTrade>('normalized-trade', (event) => { if (historyLoaded) mergeUpdate(event.payload); else pendingUpdates.push(event.payload); });
       unlistenHealth = await listen<FeedHealth>('feed-health', (event) => { if (matching(event.payload.venue, event.payload.instrument)) healthSink?.(event.payload); });
-      const info = await invoke<{ tickSize: number; historyNote: string; gapDetectionAvailable: boolean }>('subscribe_market_feed', { venue, instrument, barIntervalMs: intervalMs, ticksPerRow });
-      rowStep = info.tickSize * ticksPerRow;
+      subscriberId = crypto.randomUUID();
+      subscriptionRequest = invoke('subscribe_market_feed', { venue, instrument, barIntervalMs: intervalMs, ticksPerRow: engineTicksPerRow, subscriberId });
+      const info = await subscriptionRequest as { tickSize: number; contractMultiplier: number; historyNote: string; gapDetectionAvailable: boolean };
+      tradeTickSize = info.tickSize;
+      contractMultiplier = info.contractMultiplier || 1;
+      rowStep = info.tickSize * engineTicksPerRow;
       const toMs = Date.now();
-      const history = await invoke<FootprintHistory>('query_footprint_history', { venue, instrument, fromMs: toMs - 60 * 60_000, toMs, barIntervalMs: intervalMs, ticksPerRow });
-      if (!active || restartRequested) return;
+      const history = await invoke<FootprintHistory>('query_footprint_history', { venue, instrument, fromMs: toMs - 60 * 60_000, toMs, barIntervalMs: intervalMs, ticksPerRow: engineTicksPerRow });
+      if (!active || restartRequested) { await releaseFeed(); return; }
       data.clear();
       processedEventIds.clear();
       for (const id of history.sourceEventIds) processedEventIds.add(id);
@@ -133,16 +162,17 @@ function createFootprintEngine(): SeriesDataEngine {
   };
   return {
     start(nextHost: SeriesDataEngineHost) {
-      host = nextHost; active = true; venue = activeVenue;
+      host = nextHost; active = true;
+      venue = (host.data.resolve(host.symbol)?.provider ?? activeVenue) as TradeVenue;
       instrument = host.symbol.toUpperCase().split(':').pop()!.replace(/[^A-Z0-9:/_-]/g, '');
       intervalMs = intervalMilliseconds(host.timeframe);
       data.clear(); payload = { bars: [], step: rowStep, ticksPerRow };
       activeRestarts.add(restart); activePainters.add(repaint);
       void initialize();
     },
-    suspend() { active = false; activeRestarts.delete(restart); void removeListeners(); },
+    suspend() { active = false; activeRestarts.delete(restart); void removeListeners(); void releaseFeed(); },
     resume() { if (host) { active = true; activeRestarts.add(restart); activePainters.add(repaint); void initialize(); } },
-    stop() { active = false; activeRestarts.delete(restart); activePainters.delete(repaint); void removeListeners(); void invoke('unsubscribe_market_feed', { venue, instrument }).catch(() => undefined); data.clear(); processedEventIds.clear(); pendingUpdates = []; },
+    stop() { active = false; activeRestarts.delete(restart); activePainters.delete(repaint); void removeListeners(); void releaseFeed(); data.clear(); processedEventIds.clear(); pendingUpdates = []; },
   };
 }
 

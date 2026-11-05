@@ -5,6 +5,12 @@ import type { ChartConfig } from '@luxalgo/vela';
 import { isChartStyle } from './chart-style-catalog.ts';
 
 export const preferenceKey = 'deplyzeview.workspace.chart.appearance.v1';
+// Apply before saved preferences; explicit user colors always take precedence.
+export const defaultCandleColors = {
+  upColor: '#089981', downColor: '#F23645',
+  wickUpColor: '#089981', wickDownColor: '#F23645',
+  borderUpColor: '#089981', borderDownColor: '#F23645',
+} satisfies Partial<ChartConfig['candles']>;
 // Read the previous key once; all subsequent saves use the new app namespace.
 const legacyPreferenceKey = 'vela.workspace.chart.appearance.v1';
 export type ChartExtras = {
