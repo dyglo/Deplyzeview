@@ -25,7 +25,7 @@
   import { RustMarketDataProvider } from './data-provider';
   import './footprint';
   import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink } from './footprint';
-  import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Eye, Minus, Settings2, Square, Undo2, CandlestickChart, X, SlidersHorizontal, Bookmark, Search, Plus, UserRound, History, Layers, Sparkles, Target, Mountain, Radio, Bell, MessagesSquare, Grid3X3, CircleHelp, Star } from 'lucide-svelte';
+  import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Eye, Minus, Settings2, Square, Undo2, CandlestickChart, X, SlidersHorizontal, Bookmark, Search, Plus, UserRound, History, Layers, Sparkles, Target, Mountain, Radio, Bell, MessagesSquare, Grid3X3, CircleHelp, Star, SkipForward, Play, Pause, MousePointer2, LogOut } from 'lucide-svelte';
   let chartHost: HTMLDivElement;
   let chartArea: HTMLElement;
   let vela: Vela | undefined;
@@ -115,6 +115,17 @@
   let footprintMode: FootprintMode = 'split';
   let footprintUnit: FootprintUnit = 'quote';
   let tickCount = 15;
+  type ReplayMode = 'off' | 'pick' | 'replay';
+  type ReplayState = { mode: ReplayMode; start: number | null; playing: boolean; speed: 0 | 1 | 2 | 3 | 4 };
+  let replayState: ReplayState = { mode: 'off', start: null, playing: false, speed: 2 };
+  let replayCursorTime: number | null = null;
+  let replayHoverTime: number | null = null;
+  let replayHoverX: number | null = null;
+  let replayDragging = false;
+  let replayNotice = '';
+  let replayNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+  const replaySpeeds = [100, 333, 1000, 3000, 10000] as const;
+  const replaySpeedLabels = ['10/s', '3/s', '1/s', '1/3s', '1/10s'];
   const tabs = ['General', 'Profile', 'Imbalance', 'Color', 'Advanced'];
   const modes: { id: FootprintMode; name: string; hint: string }[] = [
     { id: 'split', name: 'Split Bar', hint: 'Bid and ask volume side by side' },
@@ -165,6 +176,8 @@
       config.layout.textColor = '#a3a5ab';
       config.grid.vertLines.color = '#25272d';
       config.grid.horzLines.color = '#25272d';
+      config.priceScale.borderColor = 'transparent';
+      config.panes.separatorColor = 'transparent';
       return config;
     };
     defaultAppearance = defaultConfig(mountedWorkspace.chart);
@@ -385,12 +398,25 @@
         updateDrawingSync();
         if (chart === mountedWorkspace.chart) syncActiveCell();
       });
+      const syncReplay = () => {
+        if (chart !== vela) return;
+        const next = chart.replay.state;
+        replayCursorTime = next.cursorTime;
+        replayState = { ...replayState, mode: next.active ? 'replay' : replayState.mode === 'pick' ? 'pick' : 'off', playing: next.playing };
+      };
+      const offReplayStart = chart.on('replay:start', (event) => { if (chart === vela) { replayCursorTime = (event as { cursorTime?: number }).cursorTime ?? null; syncReplay(); } });
+      const offReplayStep = chart.on('replay:step', (event) => { if (chart === vela) { replayCursorTime = (event as { cursorTime?: number }).cursorTime ?? null; syncReplay(); } });
+      const offReplayPlay = chart.on('replay:play', syncReplay);
+      const offReplayPause = chart.on('replay:pause', syncReplay);
+      const offReplayClick = chart.renderer.onClick((event) => { if (chart === vela && replayState.mode === 'pick' && event.time != null) void startReplayAt(event.time); });
+      const offReplayCrosshair = chart.renderer.onCrosshairMove((event) => { if (chart === vela && replayState.mode === 'pick') replayHoverTime = event.time; });
+      const offReplayEnd = chart.on('replay:end', (event) => { if (chart !== vela) return; syncReplay(); const reason = (event as { reason?: string }).reason; if (reason === 'finished') showReplayNotice('Last bar reached'); else if (reason === 'stopped') replayState = { ...replayState, mode: 'off', playing: false, start: null }; });
       syncCustomDrawings();
       syncAppearance();
       if (id === 'chartA' && !savedWorkspace && savedLegacy) applyCellExtras(chart, savedLegacy.extras);
       cellDisposers.set(id, () => {
         offCustomCreated(); offCustomEdited(); offCustomRemoved(); offCustomDraft(); offCustomSelection();
-        offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); offTabBar(); offTabLoad(); offMarket();
+        offConfig(); offStyle(); offVolumeInputs(); offVolumeVisibility(); offVolumeRemoved(); offTabBar(); offTabLoad(); offMarket(); offReplayStart(); offReplayStep(); offReplayPlay(); offReplayPause(); offReplayClick(); offReplayCrosshair(); offReplayEnd();
         offDrawingCreated(); offDrawingEdited(); offDrawingRemoved();
         statuslineSymbol?.removeEventListener('click', openStatuslineSearch);
         statuslineSymbol?.removeEventListener('keydown', onStatuslineSymbolKeydown);
@@ -433,16 +459,6 @@
       mountedWorkspace.destroy(); workspace = undefined; vela = undefined;
     };
   });
-  // Share the chart overlay with the renderer's indicator legend. Measure the
-  // symbol block so wrapping/resizing never requires a fixed indicator offset.
-  function measureSymbolLegend(node: HTMLDivElement) {
-    const area = node.closest<HTMLElement>('.chart-area');
-    const update = () => area?.style.setProperty('--chart-symbol-height', `${node.getBoundingClientRect().height}px`);
-    const observer = new ResizeObserver(update);
-    observer.observe(node);
-    update();
-    return { destroy() { observer.disconnect(); area?.style.removeProperty('--chart-symbol-height'); } };
-  }
   function openPlaceholderTool(name: string) { console.info(name + ' coming soon.'); }
   function trackWorkspaceDockWidth(node: HTMLElement) {
     const shell = node.closest('.app-shell') as HTMLElement | null;
@@ -570,6 +586,7 @@
   }
   function chooseWorkspaceLayout(id: string) {
     if (!workspace) return;
+    if (id !== '1' && replayState.mode !== 'off') replayStop();
     timeframeMenuOpen = false;
     timeframeMenuAnchor = null;
     workspace.setLayout(id);
@@ -859,8 +876,76 @@
       if (action === 'close') await current.close();
     });
   }
+  function showReplayNotice(message: string) {
+    replayNotice = message;
+    clearTimeout(replayNoticeTimer);
+    replayNoticeTimer = setTimeout(() => replayNotice = '', 2400);
+  }
+  function replayAvailable() { return layoutId === '1' && !!vela; }
+  function beginReplayPick() {
+    if (!replayAvailable()) return;
+    replayState = { ...replayState, mode: 'pick', playing: false };
+    replayHoverTime = null;
+    replayHoverX = null;
+    replayNotice = '';
+  }
+  function replayStop() {
+    vela?.replay.stop();
+    replayState = { ...replayState, mode: 'off', start: null, playing: false };
+    replayCursorTime = null;
+    replayHoverTime = null;
+    replayHoverX = null;
+    replayDragging = false;
+  }
+  async function startReplayAt(time: number) {
+    if (!replayAvailable() || replayState.mode !== 'pick' || !vela) return;
+    const bounds = vela.replay.bounds;
+    if (!bounds || time >= bounds.last) { showReplayNotice('Choose an earlier bar to start replay'); return; }
+    try {
+      await vela.replay.start({ from: time });
+      if (!vela.replay.state.active) throw new Error('Replay did not become active');
+      replayState = { ...replayState, mode: 'replay', start: time, playing: vela.replay.state.playing };
+    }
+    catch { replayState = { ...replayState, mode: 'pick', playing: false }; showReplayNotice('Replay history is unavailable for this range'); }
+  }
+  function replayStep() { if (replayState.mode === 'replay') vela?.replay.step(); }
+  function replayToggle() {
+    if (!vela || replayState.mode !== 'replay') return;
+    if (vela.replay.state.playing) vela.replay.pause();
+    else if (vela.replay.state.remaining > 0) vela.replay.play(replaySpeeds[replayState.speed]);
+  }
+  function replaySelectBar() {
+    if (vela && replayState.mode === 'replay') { vela.replay.pause(); replayState = { ...replayState, mode: 'pick', playing: false }; }
+  }
+  function replaySetSpeed(index: number) {
+    replayState = { ...replayState, speed: index as ReplayState['speed'] };
+    if (vela?.replay.state.playing) vela.replay.play(replaySpeeds[index as ReplayState['speed']]);
+  }
+  function onReplayPointerMove(event: PointerEvent) {
+    if (replayState.mode !== 'pick') return;
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    replayHoverX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+  }
+  function onReplayPointerDown(event: PointerEvent) {
+    if (replayState.mode !== 'pick' || event.button !== 0) return;
+    replayDragging = true;
+  }
+  function onReplayPointerUp(event: PointerEvent) {
+    if (!replayDragging) return;
+    replayDragging = false;
+    if (replayHoverTime != null) void startReplayAt(replayHoverTime);
+  }
+  function onReplayPointerCancel() {
+    replayDragging = false;
+  }
+  function onReplayPointerLeave() { if (replayState.mode === 'pick' && !replayDragging) { replayHoverX = null; replayHoverTime = null; } }
+  function onReplayKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && (replayState.mode === 'pick' || replayState.mode === 'replay')) { event.preventDefault(); replayStop(); }
+    else if (event.shiftKey && event.key === 'ArrowRight') { event.preventDefault(); replayStep(); }
+    else if (event.shiftKey && event.key === 'ArrowDown') { event.preventDefault(); replayToggle(); }
+  }
 </script>
-<svelte:window onkeydown={(event) => { if (event.key === 'Escape') { if (styleMenuOpen) { styleMenuOpen = false; document.querySelector<HTMLButtonElement>('.chart-style')?.focus(); } if (timeframeMenuOpen) { const anchor = timeframeMenuAnchor; timeframeMenuOpen = false; timeframeMenuAnchor = null; if (anchor) workspace?.cell(anchor.cellId)?.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-meta')?.focus(); else document.querySelector<HTMLButtonElement>('.timeframe-picker-trigger')?.focus(); } rangePickerOpen = false; timezonePickerOpen = false; } }} onclick={(event) => { const target = event.target as Element; if (!target.closest('.style-picker')) styleMenuOpen = false; if (!target.closest('.timeframe-picker')) { timeframeMenuOpen = false; timeframeMenuAnchor = null; } if (!target.closest('.range-picker-anchor')) rangePickerOpen = false; if (!target.closest('.clock-control')) timezonePickerOpen = false; }} onresize={repositionTimeframeMenu}/>
+<svelte:window onkeydown={(event) => { onReplayKeydown(event); if (event.key === 'Escape') { if (styleMenuOpen) { styleMenuOpen = false; document.querySelector<HTMLButtonElement>('.chart-style')?.focus(); } if (timeframeMenuOpen) { const anchor = timeframeMenuAnchor; timeframeMenuOpen = false; timeframeMenuAnchor = null; if (anchor) workspace?.cell(anchor.cellId)?.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-meta')?.focus(); else document.querySelector<HTMLButtonElement>('.timeframe-picker-trigger')?.focus(); } rangePickerOpen = false; timezonePickerOpen = false; } }} onclick={(event) => { const target = event.target as Element; if (!target.closest('.style-picker')) styleMenuOpen = false; if (!target.closest('.timeframe-picker')) { timeframeMenuOpen = false; timeframeMenuAnchor = null; } if (!target.closest('.range-picker-anchor')) rangePickerOpen = false; if (!target.closest('.clock-control')) timezonePickerOpen = false; }} onresize={repositionTimeframeMenu}/>
 <svelte:head><title>DeplyzeView — {symbol}</title></svelte:head>
 <div class="app-shell" data-theme={extras.theme}>
   <header class="titlebar" data-tauri-drag-region><SymbolTabBar tabs={[{ id: chartSymbol(), symbol, price: tabPrice, percentChange: tabPrice !== null && tabPreviousClose !== null && tabPreviousClose !== 0 ? ((tabPrice - tabPreviousClose) / tabPreviousClose) * 100 : null, icon: vela?.data.symbolIcon(chartSymbol()) }]} activeTabId={chartSymbol()} onAdd={() => console.info('Multi-tab coming soon.')}/><div class="window-controls"><button aria-label="Minimize" onclick={() => windowAction('minimize')}><Minus size={12}/></button><button aria-label="Maximize" onclick={() => windowAction('maximize')}><Square size={10}/></button><button class="close" aria-label="Close" onclick={() => windowAction('close')}><X size={12}/></button></div></header>
@@ -880,10 +965,13 @@
       <button class:layout-active={layoutId === 'deplyze-3'} aria-label="Three charts, one above two" aria-pressed={layoutId === 'deplyze-3'} title="Three charts, one above two" onclick={() => chooseWorkspaceLayout('deplyze-3')}>3</button>
       <button class:layout-active={layoutId === '4'} aria-label="Four charts" aria-pressed={layoutId === '4'} title="Four charts" onclick={() => chooseWorkspaceLayout('4')}>4</button>
     </div><button class:sync-active={symbolSync} aria-label="Link symbols across charts" aria-pressed={symbolSync} title="Link symbols across charts" onclick={() => setSymbolSync(!symbolSync)}><ArrowLeftRight size={13}/></button><button class:sync-active={crosshairSync} aria-label="Synchronize crosshairs" aria-pressed={crosshairSync} title="Synchronize crosshairs" onclick={() => setCrosshairSync(!crosshairSync)}><Target size={13}/></button><button class:sync-active={drawingsSync} aria-label="Synchronize drawings on matching instruments" aria-pressed={drawingsSync} title="Synchronize drawings on matching instruments" onclick={() => setDrawingsSync(!drawingsSync)}><Layers size={13}/></button></div>
-    <div class="top-spacer"></div>{#if chartStyle === 'footprint'}<button class="top-action" onclick={() => { indicatorsOpen = false; appearanceOpen = false; settingsOpen = true; }}><SlidersHorizontal size={13}/> Footprint</button>{/if}<button class="top-action" aria-label="Indicators" aria-expanded={indicatorsOpen} onclick={() => { appearanceOpen = false; settingsOpen = false; styleMenuOpen = false; vela?.renderer.closeDialogs(); indicatorsOpen = !indicatorsOpen; }}><SlidersHorizontal size={13}/> Indicators</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action"><Eye size={13}/> View as</button><button class="top-icon" aria-label="Chart settings" onclick={() => { indicatorsOpen = false; settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
+    <div class="top-spacer"></div>{#if chartStyle === 'footprint'}<button class="top-action" onclick={() => { indicatorsOpen = false; appearanceOpen = false; settingsOpen = true; }}><SlidersHorizontal size={13}/> Footprint</button>{/if}<button class="top-action" aria-label="Indicators" aria-expanded={indicatorsOpen} onclick={() => { appearanceOpen = false; settingsOpen = false; styleMenuOpen = false; vela?.renderer.closeDialogs(); indicatorsOpen = !indicatorsOpen; }}><SlidersHorizontal size={13}/> Indicators</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action replay-toolbar-button" class:replay-active={replayState.mode !== 'off'} disabled={layoutId !== '1'} title={layoutId === '1' ? 'Bar Replay' : 'Replay is available in single-chart layout only'} onclick={() => replayState.mode === 'off' ? beginReplayPick() : replayState.mode === 'pick' ? replayStop() : replaySelectBar()}><SkipForward size={13}/> Replay</button><button class="top-action"><Eye size={13}/> View as</button><button class="top-icon" aria-label="Chart settings" onclick={() => { indicatorsOpen = false; settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
   </nav>
   <main class="chart-layout" class:pine-open={pineOpen} class:pine-maximized={pineOpen && pineMaximized}>{#if vela && chartArea}{#key activeCellId}<ToolRail chart={vela} groups={drawingGroups} bind:prefs={extras.drawingTools} onClear={clearAllDrawings} onLockAll={setAllDrawingsLocked} onHideAll={setAllDrawingsHidden} modeOff={null} disabled={appearanceOpen || settingsOpen || indicatorsOpen || searchOpen}/>{/key}{:else}<aside class="drawing-toolbar" aria-label="Drawing tools"></aside>{/if}
-    <section class="chart-area" class:multi-chart={layoutId !== '1'} bind:this={chartArea} style:flex={pineOpen ? `${pineMaximized ? 0 : 100 - pinePanelWidth} 1 0%` : undefined}><div class="chart-legend" use:measureSymbolLegend><div class="legend-main"><span class="pair-name">{symbol}</span></div>{#if chartStyle === 'footprint'}<div class="legend-sub">Bid × Ask</div>{/if}</div><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market charts"></div></div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
+    <section class="chart-area" class:multi-chart={layoutId !== '1'} bind:this={chartArea} role="application" aria-label="Interactive market chart" onpointermove={onReplayPointerMove} onpointerdown={onReplayPointerDown} onpointerup={onReplayPointerUp} onpointercancel={onReplayPointerCancel} onpointerleave={onReplayPointerLeave} style:flex={pineOpen ? `${pineMaximized ? 0 : 100 - pinePanelWidth} 1 0%` : undefined}><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market charts"></div>{#if replayState.mode === 'pick' && replayHoverX !== null}<div class="replay-picker-line" style={`left:${replayHoverX}px`}><span>{replayHoverTime ? new Date(replayHoverTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Drag to select bar'}</span></div><div class="replay-future-dim" style={`left:${replayHoverX}px`}></div>{/if}</div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
+      {#if replayState.mode === 'pick'}<div class="replay-pick-panel"><MousePointer2 size={14}/><span>Click a bar to start replay</span><button onclick={replayStop}>Cancel</button></div>{/if}
+      {#if replayState.mode === 'replay'}<div class="replay-panel"><button class="replay-select" onclick={replaySelectBar}><MousePointer2 size={14}/> Select bar</button><span class="replay-panel-divider"></span><button class="replay-control" aria-label={replayState.playing ? 'Pause' : 'Play'} onclick={replayToggle}>{#if replayState.playing}<Pause size={14}/>{:else}<Play size={14}/>{/if}</button><button class="replay-control" aria-label="Step" onclick={replayStep}><SkipForward size={14}/></button><div class="replay-speeds">{#each replaySpeedLabels as label, index}<button class:chosen={replayState.speed === index} onclick={() => replaySetSpeed(index)}>{label}</button>{/each}</div><span class="replay-time">{replayCursorTime ? new Date(replayCursorTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</span><span class="replay-panel-divider"></span><button class="replay-exit" onclick={replayStop}><LogOut size={13}/> Exit</button></div>{/if}
+      {#if replayNotice}<div class="replay-notice" role="status">{replayNotice}</div>{/if}
       {#if indicatorsOpen && vela}{#key activeCellId}<IndicatorPicker chart={vela} customScripts={pineScripts} customError={pineError} onCustomAdd={addPine} onCustomEdit={editPine} onCustomDelete={deletePine} close={() => indicatorsOpen = false}/>{/key}{/if}
       {#if appearanceOpen && appearance}<ChartAppearance config={appearance} {extras} {persistenceError} patch={applyAppearance} changeExtras={applyExtras} {chooseStyle} reset={resetAppearance} close={() => appearanceOpen = false}/>{/if}
       {#if settingsOpen}<div class="settings-scrim" role="presentation" onclick={() => settingsOpen = false}></div><dialog open class="settings-dialog" aria-modal="true" aria-labelledby="settings-title" style={settingsDialogPosition ? `left:${settingsDialogPosition.left}px;top:${settingsDialogPosition.top}px;transform:none` : undefined}><header class="dialog-titlebar" role="toolbar" aria-label="Move settings dialog" tabindex="0" onkeydown={nudgeSettingsDialog} onpointerdown={startSettingsDialogDrag} onpointermove={moveSettingsDialog} onpointerup={endSettingsDialogDrag} onpointercancel={endSettingsDialogDrag}><div><span class="dialog-kicker">CHART SETTINGS</span><h2 id="settings-title">Volume Footprint</h2></div><button class="dialog-close" aria-label="Close settings" onclick={() => settingsOpen = false}><X size={14}/></button></header><nav class="dialog-tabs">{#each tabs as tab}<button class:tab-active={settingsTab === tab} onclick={() => settingsTab = tab}>{tab}</button>{/each}</nav><div class="dialog-content"><div class="dialog-section-label">{settingsTab === 'General' ? 'GENERAL' : settingsTab.toUpperCase()}</div>{#if settingsTab === 'General'}<div class="setting-row"><div class="setting-name"><strong>Unit</strong><small>Volume denomination</small></div><div class="segmented"><button class:segment-active={footprintUnit === 'quote'} onclick={() => chooseUnit('quote')}>{feedHealth?.quoteCurrency ?? 'Quote'}</button><button class:segment-active={footprintUnit === 'coin'} onclick={() => chooseUnit('coin')}>Coin</button></div></div><div class="setting-row"><div class="setting-name"><strong>Ticks per bar</strong><small>Price levels per footprint row</small></div><div class="stepper"><button aria-label="Decrease ticks" onclick={() => changeTicks(tickCount - 1)}>−</button><input type="number" min="1" max="100" bind:value={tickCount} oninput={() => changeTicks(tickCount)}/><span>ticks</span><button aria-label="Increase ticks" onclick={() => changeTicks(tickCount + 1)}>+</button></div></div><div class="setting-row mode-row"><div class="setting-name"><strong>Display mode</strong><small>How trade volume is rendered</small></div><div class="mode-options">{#each modes as item}<button class:mode-active={footprintMode === item.id} onclick={() => chooseMode(item.id)}><span>{item.name}</span><small>{item.hint}</small>{#if footprintMode === item.id}<span class="selected-dot"></span>{/if}</button>{/each}</div></div><div class="data-note"><span class="live-indicator" class:health-error={feedHealth?.status === 'error' || (feedHealth?.gapsDetected ?? 0) > 0}></span><span><strong>{feedHealth?.status === 'live' ? 'Live trade feed' : feedHealth?.status === 'error' ? 'Feed needs attention' : 'Market data service'}</strong><small>{feedHealth ? `${feedHealth.tradesStored.toLocaleString()} stored trades · ${feedHealth.gapDetectionAvailable ? `${feedHealth.gapsDetected} gap(s)` : 'gap detection unavailable'}` : 'Waiting for Rust feed status…'}</small><small>{coverageText()}</small><small>{feedHealth?.historyNote ?? `${venue} public trade history`}</small>{#if feedHealth?.lastError}<small class="feed-error-text">{feedHealth.lastError}</small>{/if}</span></div>{:else}<div class="settings-placeholder"><div class="settings-placeholder-icon"><Settings2 size={17}/></div><strong>{settingsTab} settings</strong><span>Configure {settingsTab.toLowerCase()} visualization for the footprint chart.</span><div class="coming-chip">AVAILABLE IN THIS BUILD</div></div>{/if}</div><footer class="dialog-footer"><span class="footer-hint">Settings apply to the active chart</span><button class="done-button" onclick={() => settingsOpen = false}>Done</button></footer></dialog>{/if}

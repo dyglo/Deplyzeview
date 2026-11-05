@@ -147,3 +147,17 @@ test('drawing registry retains overwritten function labels and renders named tim
   assert.equal(boxes[0].left,2);
   assert.equal(boxes[0].right,2);
 });
+
+
+test('replay-prefix evaluation cannot expose future plot points or drawings',()=>{
+  const program=compile('//@version=5\nindicator("Replay boundary", overlay=true)\nvar label marker = label.new(na,na,"marker",xloc=xloc.bar_time)\nmarker.set_point(chart.point.new(time,na,close))\nplot(ta.sma(close,2))');
+  const full=bars([10,20,30,40,50]);
+  for (let length=1; length<=full.length; length++) {
+    const prefix=full.slice(0,length);
+    const output=evaluate(program,prefix);
+    const lastTime=prefix.at(-1).time;
+    assert.equal(output.plots[0].points.length,length);
+    assert.ok(output.plots.every(plot=>plot.points.every(point=>point.time<=lastTime)));
+    assert.ok(output.labels.every(label=>label.x<=lastTime));
+  }
+});
