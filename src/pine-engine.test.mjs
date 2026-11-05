@@ -24,6 +24,15 @@ test('adapter exposes Pine inputs as editable chart settings',async()=>{
     assert.equal(model.inputValues.length,4);
   } finally {globalThis.Worker=original;}
 });
+test('adapter forwards native Pine tables to the chart model',()=>{
+  const source='//@version=5\nindicator("Table",overlay=true)\nvar table panel=table.new(position.top_right,1,1)\nif barstate.islast\n    table.cell(panel,0,0,"RANGE",text_color=color.white,bgcolor=color.new(color.gray,25),text_size=size.tiny)\nplot(close)';
+  const output=evaluate(compile(source),[{time:1,open:1,high:2,low:0,close:1}]);
+  const model=toModel('table',output);
+  assert.equal(model.tables.length,1);
+  assert.equal(model.tables[0].position,'top_right');
+  assert.equal(model.tables[0].cells[0][0].text,'RANGE');
+  assert.equal(model.tables[0].cells[0][0].bgColor,'#787B86bf');
+});
 test('worker timeout terminates execution and returns a recoverable error',async t=>{
   t.mock.timers.enable({apis:['setTimeout']});
   const original=globalThis.Worker;
@@ -31,7 +40,7 @@ test('worker timeout terminates execution and returns a recoverable error',async
   globalThis.Worker=class {postMessage(){} terminate(){terminated=true;}};
   try {
     const job=workerJob('source');
-    const rejected=assert.rejects(job.promise,/five seconds/);
+    const rejected=assert.rejects(job.promise,/runtime limit:.*five-second worker cap/);
     t.mock.timers.tick(5000);await rejected;assert.equal(terminated,true);
   } finally {globalThis.Worker=original;}
 });
@@ -52,6 +61,7 @@ test('engine coalesces updates and ignores responses after removal',async t=>{
     t.mock.timers.tick(50);
     session.notifyBars();session.notifyBars();t.mock.timers.tick(50);
     const worker=workers[0];
+    assert.equal(worker.requests[0].isLive,true);
     worker.onmessage({data:{ok:true,revision:1,result:evaluate(compile(source),bars)}});
     assert.equal(models.length,0);
     bars=[{...bars[0],close:2}];t.mock.timers.tick(50);

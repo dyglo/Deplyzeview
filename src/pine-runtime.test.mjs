@@ -11,6 +11,48 @@ test('TA reference values and warm-up',()=>{
   assert.deepEqual(run('plot(ta.rsi(close, 3))'),[null,null,null,100,100]);
   assert.deepEqual(run('plot(ta.rsi(close, 2))',[5,4,3,2]),[null,null,0,0]);
 });
+test('EMA Regime math functions, ta.stdev, dynamic input lengths, and table rendering work',()=>{
+  assert.deepEqual(run('plot(math.log(close))',[1,Math.E]),[0,1]);
+  assert.deepEqual(run('plot(math.sqrt(close))',[1,4]),[1,2]);
+  const population=run('plot(ta.stdev(close,3))',[1,2,3,4]);
+  assert.ok(Math.abs(population[2]-Math.sqrt(2/3))<1e-12);
+  assert.ok(Math.abs(population[3]-Math.sqrt(2/3))<1e-12);
+  assert.deepEqual(run('plot(ta.stdev(close,3,false))',[1,2,3,4]),[null,null,1,1]);
+  const source='//@version=5\nindicator("Dynamic length")\nuseTwo=input.bool(true,"Two")\nlength=useTwo?2:3\nplot(ta.sma(close,length))';
+  const program=compile(source);
+  assert.deepEqual(new RuntimeSession(program).run(bars([1,2,3,4]),{useTwo:false}).plots[0].points.map(point=>point.value),[null,null,2,3]);
+  const tableSource='//@version=5\nindicator("Table",overlay=true)\nvar table tbl=table.new(position.top_right,1,1)\nif barstate.islast\n    table.cell(tbl,0,0,barstate.isconfirmed?"CONFIRMED":"FORMING",text_color=color.white,bgcolor=color.new(color.green,20),text_size=size.tiny)\nplot(close)';
+  const tableProgram=compile(tableSource);
+  const historical=evaluate(tableProgram,bars([1,2]));
+  assert.equal(historical.tables[0].position,'top_right');
+  assert.equal(historical.tables[0].cells[0][0].text,'CONFIRMED');
+  assert.equal(historical.tables[0].cells[0][0].bgColor,'#4CAF50cc');
+  const live=new RuntimeSession(tableProgram).run(bars([1,2]),{},true);
+  assert.equal(live.tables[0].cells[0][0].text,'FORMING');
+});
+test('Pine v5 untyped functions, TA length qualifiers, ta.tr overloads, and editor-limit diagnostics',()=>{
+  assert.deepEqual(run('twice(x) => x * 2\nplot(twice(close))',[2,3]),[4,6]);
+  assert.deepEqual(run('plot(ta.tr)',[2,3]),[null,2]);
+  assert.deepEqual(run('plot(ta.tr(true))',[2,3]),[2,2]);
+  const seriesLength='//@version=5\nindicator("Series length")\nlength=close>2?3:2\nplot(ta.sma(close,length))';
+  assert.deepEqual(evaluate(compile(seriesLength),bars([1,3,4])).plots[0].points.map(point=>point.value),[null,null,2.6666666666666665]);
+  const simpleLength='//@version=5\nindicator("Bad EMA length")\nlength=close>2?3:2\nplot(ta.ema(close,length))';
+  assert.throws(()=>compile(simpleLength),/requires a simple int length/);
+  assert.throws(()=>compile('//@version=5\nindicator("Bad int")\nint n=1.5\nplot(close)'),/Pine int declaration requires an integer/);
+  assert.throws(()=>compile('//@version=6\nindicator("Other version")\nplot(close)'),/supports Pine v5 only/);
+  assert.throws(()=>compile('//@version=5\nstrategy("Strategy")\nplot(close)'),/indicator\(\) scripts only/);
+  assert.throws(()=>compile('//@version=5\nindicator("Unsupported")\nplot(ta.macd(close,12,26,9))'),/not implemented by this editor subset.*not a Pine syntax error/);
+  assert.throws(()=>compile('//@version=5\nindicator("Undeclared")\nplot(missingValue)'),/Undeclared identifier/);
+});
+test('Pine while loops recheck conditions and handle break/continue with runtime diagnostics',()=>{
+  const source='//@version=5\nindicator("While")\ni=0\ntotal=0\nwhile i<4\n    i:=i+1\n    if i==2\n        continue\n    total:=total+i\nplot(total)';
+  assert.deepEqual(evaluate(compile(source),bars([1,2])).plots[0].points.map(point=>point.value),[8,8]);
+  const breaking='//@version=5\nindicator("Break")\ni=0\nwhile true\n    i:=i+1\n    if i==3\n        break\nplot(i)';
+  assert.deepEqual(evaluate(compile(breaking),bars([1])).plots[0].points.map(point=>point.value),[3]);
+  assert.throws(()=>compile('//@version=5\nindicator("Bad break")\nbreak'),/can only be used inside a loop/);
+  const infinite='//@version=5\nindicator("Limit")\nwhile true\n    x=1\nplot(close)';
+  assert.throws(()=>evaluate(compile(infinite),bars([1])),error=>error.stage==='runtime'&&/loop execution limit/.test(error.message));
+});
 test('history, persistence, reassignment and if blocks',()=>{
   assert.deepEqual(run('var float total = 0\nif close > 2\n    total := total + close\nplot(total)'),[0,0,3,7,12]);
   assert.deepEqual(run('previous = close[1]\nplot(previous)'),[null,1,2,3,4]);

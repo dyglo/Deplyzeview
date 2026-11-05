@@ -68,3 +68,43 @@ export function addWatchlistItem(items: WatchlistItem[], item: InstrumentSearchR
   if (items.some(existing => existing.identity === identity)) return items;
   return [...items, { ...item, identity }];
 }
+
+export type WatchlistCollection = { activeId: string; lists: { id: string; name: string; items: WatchlistItem[] }[] };
+export const watchlistsKey = 'deplyzeview.workspace.watchlists.v1';
+export function readWatchlists(storage: Pick<Storage, 'getItem'>): WatchlistCollection {
+  try {
+    const raw = JSON.parse(storage.getItem(watchlistsKey) ?? 'null');
+    if (Array.isArray(raw?.lists)) {
+      const ids = new Set<string>();
+      const lists = raw.lists.flatMap((list: any) => {
+        if (typeof list?.id !== 'string' || ids.has(list.id) || typeof list.name !== 'string' || !list.name.trim()) return [];
+        ids.add(list.id);
+        return [{ id: list.id, name: list.name.trim().slice(0, 40), items: readWatchlist({ getItem: () => JSON.stringify(list.items) }) }];
+      });
+      if (lists.length) return { lists, activeId: lists.some((list: { id: string }) => list.id === raw.activeId) ? raw.activeId : lists[0].id };
+    }
+  } catch { /* Keep the original saved watchlist as a migration fallback. */ }
+  return { activeId: 'default', lists: [{ id: 'default', name: 'Watchlist', items: readWatchlist(storage) }] };
+}
+export function watchlistCategory(item: WatchlistItem): string {
+  if (/future/.test(item.instrumentType)) return 'Futures';
+  if (/index|indices/.test(item.assetClass)) return 'Indices';
+  if (/forex|fx/.test(item.assetClass)) return 'Forex';
+  if (/commodity|commodities|metal|energy/.test(item.assetClass)) return 'Commodities';
+  if (/crypto/.test(item.assetClass)) return 'Crypto';
+  if (/stock|equity|equities/.test(item.assetClass)) return 'Stocks';
+  return 'Other';
+}
+export function reorderWatchlist(items: WatchlistItem[], source: string, target: string): WatchlistItem[] {
+  const from = items.findIndex(item => item.identity === source);
+  const to = items.findIndex(item => item.identity === target);
+  if (from < 0 || to < 0 || from === to || watchlistCategory(items[from]) !== watchlistCategory(items[to])) return items;
+  const next = [...items];
+  next.splice(to, 0, ...next.splice(from, 1));
+  return next;
+}
+export function formatWatchlistNumber(value: number | null | undefined, item: WatchlistItem, signed = false): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const decimals = watchlistCategory(item) === 'Forex' ? (/JPY/.test(item.symbol) ? 3 : 5) : /XAU|XAG/.test(item.symbol) ? 3 : Math.abs(value) > 0 && Math.abs(value) < 1 ? 5 : 2;
+  return `${signed && value !== 0 ? value > 0 ? '+' : '−' : ''}${new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(signed ? Math.abs(value) : value)}`;
+}

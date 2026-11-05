@@ -118,35 +118,22 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 
 /* Right-side workspace dock: the watchlist docks beside the chart and defaults to the icon rail only. */
 .workspace-dock{height:100%;min-height:0;flex:none;display:flex;flex-direction:row;border-left:1px solid var(--line);background:var(--tone-111215,#111215)}
+.chart-layout.pine-open{overflow:hidden}
+.chart-layout.pine-open .chart-area{min-width:0;flex-shrink:1}
+.chart-layout.pine-open .workspace-dock{min-width:0;max-width:none;overflow:hidden;border-left:0}
+.chart-layout.pine-maximized .chart-area{display:none}
+.chart-layout.pine-maximized .pine-resizer{display:none}
+.pine-resizer{position:relative;z-index:4;width:8px;flex:0 0 8px;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:var(--tone-101114,#101114);cursor:col-resize;touch-action:none;user-select:none;outline:none}
+.pine-resizer:before{position:absolute;top:0;bottom:0;left:3px;width:1px;content:"";background:var(--tone-25272d,#25272d);transition:background .12s,width .12s,left .12s}
+.pine-resizer span{position:relative;width:3px;height:42px;border-radius:3px;background:var(--tone-70737c,#70737c);opacity:.72;transition:background .12s,opacity .12s}
+.pine-resizer:hover:before,.pine-resizer:focus-visible:before{left:2px;width:3px;background:var(--tone-7e544d,#7e544d)}
+.pine-resizer:hover span,.pine-resizer:focus-visible span{background:var(--tone-d3d4d8,#d3d4d8);opacity:1}
+.chart-layout.pine-open,.chart-layout.pine-open *{overscroll-behavior:contain}
 .workspace-rail{width:38px;flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 4px;border-left:1px solid var(--line);background:var(--tone-111215,#111215)}
 .workspace-rail button{width:29px;height:30px;display:grid;place-items:center;border-radius:4px;color:var(--tone-858791,#858791);transition:background .12s,color .12s}
 .workspace-rail button:hover,.workspace-rail button:focus-visible{background:var(--tone-26282e,#26282e);color:var(--tone-dadbe0,#dadbe0)}
 .workspace-rail button.rail-active{background:var(--tone-24262b,#24262b);color:var(--tone-e0e1e5,#e0e1e5)}
-.watchlist-panel{width:252px;min-width:220px;max-width:32vw;min-height:0;display:flex;flex-direction:column;background:var(--tone-101114,#101114);border-right:1px solid var(--line)}
-.watchlist-header{height:45px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 14px;border-bottom:1px solid var(--line)}
-.watchlist-header>div{display:flex;align-items:baseline;gap:7px;min-width:0}.watchlist-header h2{margin:0;color:var(--tone-d4d5da,#d4d5da);font-size:10px;font-weight:550}.watchlist-header small{color:var(--muted);font-size:8px}
-.watchlist-add{width:27px;height:27px;display:grid;place-items:center;border-radius:3px;color:var(--tone-9a9ca5,#9a9ca5)}.watchlist-add:hover{background:var(--tone-26282e,#26282e);color:var(--tone-e0e1e5,#e0e1e5)}
-.watchlist-columns{height:27px;flex:none;display:grid;grid-template-columns:minmax(0,1fr) 57px;align-items:center;padding:0 35px 0 12px;border-bottom:1px solid var(--tone-25272d,#25272d);color:var(--muted);font-size:7px;letter-spacing:.35px;text-transform:uppercase}
-.watchlist-items{min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--tone-41434b,#41434b) transparent}.watchlist-row{min-height:55px;display:grid;grid-template-columns:minmax(0,1fr) 50px 22px;align-items:center;gap:4px;padding:3px 6px 3px 11px;border-bottom:1px solid color-mix(in srgb,var(--line) 65%,transparent)}.watchlist-row:hover{background:var(--tone-17181c,#17181c)}
-.watchlist-select{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:4px 0;text-align:left}.watchlist-symbol{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tone-dadbe0,#dadbe0);font:500 10px "Roboto Mono",monospace}.watchlist-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tone-83858d,#83858d);font-size:8px}.watchlist-type{color:var(--muted);font-size:7px;text-transform:capitalize}.watchlist-provider{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tone-a4a6ad,#a4a6ad);font-size:8px}.watchlist-remove{width:20px;height:24px;display:grid;place-items:center;border-radius:3px;color:var(--tone-70737c,#70737c);opacity:0}.watchlist-row:hover .watchlist-remove,.watchlist-remove:focus-visible{opacity:1}.watchlist-remove:hover{background:var(--tone-292b32,#292b32);color:#cf8a7c}
-.watchlist-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:22px;text-align:center;color:var(--tone-858791,#858791)}.watchlist-empty strong{color:var(--tone-bfc1c8,#bfc1c8);font-size:10px;font-weight:500}.watchlist-empty span{max-width:180px;color:var(--muted);font-size:8px;line-height:1.6}.watchlist-empty>button{display:flex;align-items:center;gap:5px;margin-top:4px;padding:7px 10px;border:1px solid var(--tone-3b3d45,#3b3d45);border-radius:4px;color:var(--tone-c7c9ce,#c7c9ce);font-size:9px}.watchlist-empty>button:hover{background:var(--tone-24262b,#24262b)}.watchlist-storage-error{padding:8px 10px;border-top:1px solid var(--line);color:#c58a7c;font-size:8px;line-height:1.5}
-@media(max-width:900px){.watchlist-panel{width:220px;min-width:205px}.watchlist-columns{grid-template-columns:minmax(0,1fr) 49px}.watchlist-row{grid-template-columns:minmax(0,1fr) 44px 20px}}
-@media(max-width:720px){.watchlist-panel{width:205px;min-width:190px}.watchlist-provider{font-size:7px}}
 
-/* Watchlist market table: prices and daily deltas stay inside the dock, never over the chart. */
-.watchlist-panel{width:350px;min-width:320px;max-width:34vw}
-.watchlist-header small{font-variant-numeric:tabular-nums}
-.watchlist-columns{grid-template-columns:minmax(0,1fr) 78px 76px 22px;padding:0 6px 0 11px}
-.watchlist-row{grid-template-columns:minmax(0,1fr) 78px 76px 22px;gap:3px;padding:3px 6px 3px 11px}
-.watchlist-select{gap:2px}
-.watchlist-meta{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:7px;text-transform:capitalize}
-.watchlist-last,.watchlist-change{min-width:0;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:3px;font-variant-numeric:tabular-nums}
-.watchlist-last strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tone-dadbe0,#dadbe0);font:500 9px "Roboto Mono",monospace}
-.watchlist-last small,.watchlist-change small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:7px}
-.watchlist-change strong{font:500 9px "Roboto Mono",monospace;white-space:nowrap}
-.watchlist-change.change-positive strong{color:#83ae96}.watchlist-change.change-negative strong{color:#c77d70}.watchlist-change.change-neutral strong{color:var(--tone-858791,#858791)}
-@media(max-width:900px){.watchlist-panel{width:330px;min-width:285px}.watchlist-columns{grid-template-columns:minmax(0,1fr) 69px 67px 20px}.watchlist-row{grid-template-columns:minmax(0,1fr) 69px 67px 20px}}
-@media(max-width:720px){.watchlist-panel{width:310px;min-width:280px}.watchlist-columns{grid-template-columns:minmax(0,1fr) 65px 64px 20px}.watchlist-row{grid-template-columns:minmax(0,1fr) 65px 64px 20px}}
 
 /* Compact, Chrome-style titlebar symbol tabs. */
 .symbol-tab-strip{position:relative;z-index:1;height:100%;min-width:0;display:flex;align-items:stretch;gap:0}
@@ -231,3 +218,26 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 
 /* Workspace rail group spacing. */
 .workspace-rail .rail-group-gap{height:auto;min-height:96px;flex:1 1 auto}
+
+/* Compact chart timeframe picker: show the active interval and persisted quick favorites. */
+.timeframe-picker{position:relative;display:flex;align-items:center}
+.timeframes .timeframe-picker-trigger{width:21px;min-width:21px;height:26px;display:grid;place-items:center;padding:0;border-radius:3px;color:var(--tone-83858d,#83858d)}
+.timeframes .timeframe-picker-trigger:hover,.timeframes .timeframe-picker-trigger[aria-expanded="true"]{background:var(--tone-26282e,#26282e);color:var(--tone-e0e1e5,#e0e1e5)}
+.timeframe-menu{position:absolute;z-index:40;top:calc(100% + 7px);left:-3px;width:190px;padding:5px;background:var(--tone-15161a,#15161a);border:1px solid var(--tone-353740,#353740);border-radius:5px;box-shadow:0 12px 38px #000b;color:var(--tone-c7c9ce,#c7c9ce)}
+.timeframe-menu.timeframe-menu-cell-anchored{position:fixed;z-index:100;top:var(--timeframe-menu-top);left:var(--timeframe-menu-left);max-height:calc(100vh - 8px);overflow-y:auto}
+.timeframe-menu-heading{height:37px;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 8px 5px;border-bottom:1px solid var(--tone-25272d,#25272d)}
+.timeframe-menu-heading strong{font-size:9px;font-weight:550;color:var(--tone-d3d4d8,#d3d4d8)}
+.timeframe-menu-heading small{font-size:8px;color:var(--tone-777a83,#777a83)}
+.vela-statusline .vela-sl-symbol[role=button],.vela-statusline .vela-sl-meta[role=button]{cursor:pointer}
+.vela-statusline .vela-sl-symbol[role=button]:hover,.vela-statusline .vela-sl-meta[role=button]:hover{text-decoration:underline;text-decoration-color:var(--vela-fg-muted);text-underline-offset:2px}
+.timeframe-option{height:31px;display:flex;align-items:center;gap:4px;margin-top:2px;border-radius:3px}
+.timeframe-option:hover{background:var(--tone-1e1f24,#1e1f24)}
+.timeframes .timeframe-choice{height:29px;min-width:0;flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 8px;border-radius:3px;text-align:left;color:var(--tone-aeb0b7,#aeb0b7)}
+.timeframes .timeframe-choice:hover,.timeframes .timeframe-choice.interval-current{color:var(--tone-e0e1e5,#e0e1e5);background:var(--tone-26282e,#26282e)}
+.timeframe-choice small{font-size:7px;color:var(--tone-7e544d,#7e544d)}
+.timeframes .timeframe-favorite{width:29px;min-width:29px;height:29px;display:grid;place-items:center;padding:0;border-radius:3px;color:var(--tone-70737c,#70737c)}
+.timeframes .timeframe-favorite:hover{background:var(--tone-26282e,#26282e);color:var(--tone-c7c9ce,#c7c9ce)}
+.timeframes .timeframe-favorite.favorite-active{color:var(--tone-7e544d,#7e544d)}
+.timeframes .timeframe-favorite.favorite-active:hover{color:var(--tone-d3d4d8,#d3d4d8)}
+.statusbar .range-options{margin-left:42px;flex:none}
+.multi-chart-controls{display:flex;align-items:center;gap:3px;flex:none}.layout-picker{display:flex;align-items:center;gap:1px;padding:2px;background:var(--tone-17181d,#17181d);border:1px solid var(--tone-292b32,#292b32);border-radius:4px}.layout-picker button{height:22px;min-width:23px;padding:0 4px;border-radius:3px;color:var(--tone-82858e,#82858e);font:9px "Roboto Mono",monospace}.layout-picker button:hover,.layout-picker button.layout-active{background:var(--tone-2a2c33,#2a2c33);color:var(--tone-e1e2e5,#e1e2e5)}.layout-picker button.layout-active{box-shadow:inset 0 0 0 1px var(--tone-45434b,#45434b)}.multi-chart-controls>button{height:25px;width:26px;display:grid;place-items:center;border:1px solid transparent;border-radius:3px;color:var(--tone-81848d,#81848d)}.multi-chart-controls>button:hover{background:var(--tone-25272d,#25272d);color:var(--tone-d5d6da,#d5d6da)}.multi-chart-controls>button.sync-active{color:#d08a79;background:var(--tone-292328,#292328);border-color:var(--tone-63463f,#63463f)}.vela-chart>.vela-workspace{position:absolute;inset:0;width:100%;height:100%;min-width:0;min-height:0;z-index:1}.vela-workspace>.vela-topbar,.vela-workspace>.vela-bottombar{display:none!important}.chart-area.multi-chart{--chart-symbol-height:0px}.chart-area.multi-chart>.chart-legend{display:none}.chart-area.multi-chart>.chart-bottom-controls .chart-watermark{display:none}.chart-area.multi-chart [data-vela-pane="price"]{translate:0 0!important}

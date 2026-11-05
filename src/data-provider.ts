@@ -97,6 +97,8 @@ export class RustMarketDataProvider {
     const duration = intervalMs(timeframe);
     let active = true;
     let unlisten: UnlistenFn | undefined;
+    const subscriberId = crypto.randomUUID();
+    let subscriptionRequest: Promise<unknown> | undefined;
     const cacheKey = `${instrument}|${timeframe}`;
     const seenEventIds = new Set<string>();
     const firstCompleteLiveBarTime = Math.ceil(Date.now() / duration) * duration;
@@ -125,14 +127,16 @@ export class RustMarketDataProvider {
       if (!active) { remove(); return; }
       unlisten = remove;
       try {
-        await invoke('subscribe_market_feed', { venue: this.venue, instrument, barIntervalMs: duration, ticksPerRow: 15 });
+        subscriptionRequest = invoke('subscribe_market_feed', { venue: this.venue, instrument, barIntervalMs: duration, ticksPerRow: 15, subscriberId });
+        await subscriptionRequest;
       } catch { /* Feed health is surfaced by the footprint service and status line. */ }
     };
     void attach();
     return () => {
       active = false;
       unlisten?.();
-      void invoke('unsubscribe_market_feed', { venue: this.venue, instrument }).catch(() => undefined);
+      const release = () => invoke('unsubscribe_market_feed', { venue: this.venue, instrument, subscriberId }).catch(() => undefined);
+      if (subscriptionRequest) void subscriptionRequest.then(release, release);
     };
   }
 }

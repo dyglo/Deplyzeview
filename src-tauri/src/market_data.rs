@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -10,7 +10,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, State};
-use tokio::{task::JoinHandle, time::sleep};
+use tokio::{sync::Mutex as AsyncMutex, task::JoinHandle, time::sleep};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 const HISTORY_WINDOW_MS: i64 = 60 * 60 * 1000;
@@ -139,6 +139,8 @@ pub struct AppState {
     db: Arc<Mutex<Connection>>,
     tasks: Mutex<HashMap<String, JoinHandle<()>>>,
     configs: Mutex<HashMap<String, FeedConfig>>,
+    subscribers: Mutex<HashMap<String, HashSet<String>>>,
+    startup_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
 }
 
 impl AppState {
@@ -147,7 +149,33 @@ impl AppState {
             db: Arc::new(Mutex::new(db)),
             tasks: Mutex::new(HashMap::new()),
             configs: Mutex::new(HashMap::new()),
+            subscribers: Mutex::new(HashMap::new()),
+            startup_locks: Mutex::new(HashMap::new()),
         }
+    }
+}
+
+fn retain_subscriber(subscribers: &mut HashMap<String, HashSet<String>>, key: &str, id: &str) {
+    subscribers
+        .entry(key.to_string())
+        .or_default()
+        .insert(id.to_string());
+}
+
+fn release_subscriber(
+    subscribers: &mut HashMap<String, HashSet<String>>,
+    key: &str,
+    id: &str,
+) -> bool {
+    let Some(ids) = subscribers.get_mut(key) else {
+        return false;
+    };
+    ids.remove(id);
+    if ids.is_empty() {
+        subscribers.remove(key);
+        true
+    } else {
+        false
     }
 }
 
@@ -940,14 +968,37 @@ pub async fn subscribe_market_feed(
     instrument: String,
     bar_interval_ms: i64,
     ticks_per_row: u32,
+    subscriber_id: String,
 ) -> Result<FeedInfo, String> {
     let (venue, instrument) = validate_market(&venue, &instrument)?;
+    let subscriber_id = subscriber_id.trim().to_string();
+    if subscriber_id.is_empty() || subscriber_id.len() > 128 {
+        return Err("Market-feed subscriber ID is invalid".into());
+    }
+    let key = feed_key(&venue, &instrument);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
         .user_agent("DeplyzeView/0.1 market-data")
         .build()
         .map_err(|e| e.to_string())?;
-    let tick_size = tick_size_for(&client, &venue, &instrument).await?;
+    let startup_lock = {
+        let mut locks = state.startup_locks.lock().map_err(|e| e.to_string())?;
+        locks
+            .entry(key.clone())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone()
+    };
+    let _startup = startup_lock.lock().await;
+    let cached_tick_size = state
+        .configs
+        .lock()
+        .map_err(|e| e.to_string())?
+        .get(&key)
+        .map(|config| config.tick_size);
+    let tick_size = match cached_tick_size {
+        Some(value) => value,
+        None => tick_size_for(&client, &venue, &instrument).await?,
+    };
     let config = FeedConfig {
         venue: venue.clone(),
         instrument: instrument.clone(),
@@ -960,61 +1011,77 @@ pub async fn subscribe_market_feed(
         history_note: history_note(&venue),
         gap_detection_available: gap_detection_available(&venue),
     };
-    // Backfill before returning to the UI. This removes the race between history queries and async seeding.
-    let seed = backfill(
-        &client,
-        &venue,
-        &instrument,
-        now_ms() - HISTORY_WINDOW_MS,
-        now_ms(),
-    )
-    .await;
-    let seed_error = match seed {
-        Ok(trades) => {
-            for trade in trades {
-                let _ = store_trade(&state.db, &trade);
-            }
-            None
-        }
-        Err(error) => Some(error),
-    };
-    let prior_health = state.db.lock().ok().and_then(|db| db.query_row("SELECT gaps_detected,last_message_ms FROM feed_health WHERE venue=?1 AND instrument=?2", params![venue,instrument], |row| Ok((row.get::<_,i64>(0)?,row.get::<_,Option<i64>>(1)?))).optional().ok().flatten()).unwrap_or((0,None));
-    let prior_gaps = prior_health.0.max(0) as u64;
-    let prior_last_message = prior_health.1;
-    emit_health(
-        &app,
-        &state.db,
-        &config,
-        "connecting",
-        prior_last_message,
-        prior_gaps,
-        seed_error.clone(),
-    );
-    let key = feed_key(&venue, &instrument);
     {
         let mut configs = state.configs.lock().map_err(|e| e.to_string())?;
         configs.insert(key.clone(), config.clone());
     }
     {
-        let mut tasks = state.tasks.lock().map_err(|e| e.to_string())?;
-        if let Some(old) = tasks.remove(&key) {
-            old.abort();
+        let mut subscribers = state.subscribers.lock().map_err(|e| e.to_string())?;
+        retain_subscriber(&mut subscribers, &key, &subscriber_id);
+    }
+    let has_task = state
+        .tasks
+        .lock()
+        .map_err(|e| e.to_string())?
+        .contains_key(&key);
+    if !has_task {
+        // Seed once before the feed becomes visible. Other charts await this market's
+        // startup lock, then reuse the same task and history instead of replacing it.
+        let seed = backfill(
+            &client,
+            &venue,
+            &instrument,
+            now_ms() - HISTORY_WINDOW_MS,
+            now_ms(),
+        )
+        .await;
+        let seed_error = match seed {
+            Ok(trades) => {
+                for trade in trades {
+                    let _ = store_trade(&state.db, &trade);
+                }
+                None
+            }
+            Err(error) => Some(error),
+        };
+        let prior_health = state.db.lock().ok().and_then(|db| db.query_row("SELECT gaps_detected,last_message_ms FROM feed_health WHERE venue=?1 AND instrument=?2", params![venue,instrument], |row| Ok((row.get::<_,i64>(0)?,row.get::<_,Option<i64>>(1)?))).optional().ok().flatten()).unwrap_or((0,None));
+        let prior_gaps = prior_health.0.max(0) as u64;
+        let prior_last_message = prior_health.1;
+        emit_health(
+            &app,
+            &state.db,
+            &config,
+            "connecting",
+            prior_last_message,
+            prior_gaps,
+            seed_error.clone(),
+        );
+        let still_subscribed = state
+            .subscribers
+            .lock()
+            .map_err(|e| e.to_string())?
+            .get(&key)
+            .is_some_and(|ids| !ids.is_empty());
+        if still_subscribed {
+            let mut tasks = state.tasks.lock().map_err(|e| e.to_string())?;
+            if !tasks.contains_key(&key) {
+                let app_handle = app.clone();
+                let db = state.db.clone();
+                let venue_config = config.clone();
+                let handle = tokio::spawn(async move {
+                    run_feed(
+                        app_handle,
+                        db,
+                        venue_config,
+                        seed_error,
+                        prior_gaps,
+                        prior_last_message,
+                    )
+                    .await;
+                });
+                tasks.insert(key.clone(), handle);
+            }
         }
-        let app_handle = app.clone();
-        let db = state.db.clone();
-        let venue_config = config.clone();
-        let handle = tokio::spawn(async move {
-            run_feed(
-                app_handle,
-                db,
-                venue_config,
-                seed_error,
-                prior_gaps,
-                prior_last_message,
-            )
-            .await;
-        });
-        tasks.insert(key, handle);
     }
     Ok(FeedInfo {
         venue: config.venue,
@@ -1029,14 +1096,35 @@ pub async fn subscribe_market_feed(
 }
 
 #[tauri::command]
-pub fn unsubscribe_market_feed(
+pub async fn unsubscribe_market_feed(
     state: State<'_, AppState>,
     venue: String,
     instrument: String,
+    subscriber_id: String,
 ) -> Result<(), String> {
+    let (venue, instrument) = validate_market(&venue, &instrument)?;
     let key = feed_key(&venue, &instrument);
-    if let Some(task) = state.tasks.lock().map_err(|e| e.to_string())?.remove(&key) {
-        task.abort();
+    let startup_lock = {
+        let mut locks = state.startup_locks.lock().map_err(|e| e.to_string())?;
+        locks
+            .entry(key.clone())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone()
+    };
+    let _startup = startup_lock.lock().await;
+    let last_subscriber = {
+        let mut subscribers = state.subscribers.lock().map_err(|e| e.to_string())?;
+        release_subscriber(&mut *subscribers, &key, subscriber_id.trim())
+    };
+    if last_subscriber {
+        if let Some(task) = state.tasks.lock().map_err(|e| e.to_string())?.remove(&key) {
+            task.abort();
+        }
+        state
+            .configs
+            .lock()
+            .map_err(|e| e.to_string())?
+            .remove(&key);
     }
     Ok(())
 }
@@ -1167,6 +1255,35 @@ pub fn get_feed_health(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_feed_stops_only_after_the_last_unique_subscriber_releases() {
+        let mut subscribers = HashMap::new();
+        retain_subscriber(&mut subscribers, "binance:BTCUSDT", "chart-a");
+        retain_subscriber(&mut subscribers, "binance:BTCUSDT", "chart-a");
+        retain_subscriber(&mut subscribers, "binance:BTCUSDT", "chart-b");
+
+        assert!(!release_subscriber(
+            &mut subscribers,
+            "binance:BTCUSDT",
+            "chart-a"
+        ));
+        assert!(subscribers
+            .get("binance:BTCUSDT")
+            .unwrap()
+            .contains("chart-b"));
+        assert!(release_subscriber(
+            &mut subscribers,
+            "binance:BTCUSDT",
+            "chart-b"
+        ));
+        assert!(!subscribers.contains_key("binance:BTCUSDT"));
+        assert!(!release_subscriber(
+            &mut subscribers,
+            "binance:BTCUSDT",
+            "unknown"
+        ));
+    }
+
     #[test]
     fn maps_aggressor_side_and_event_identity_for_each_venue() {
         let binance = json!({"e":"aggTrade","a":7,"p":"101.5","q":"2","T":1000,"m":true});
