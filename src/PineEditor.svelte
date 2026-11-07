@@ -7,6 +7,7 @@
   import type { Vela } from '@luxalgo/vela';
   import { PineEngine } from '@luxalgo/vela-pinets';
   import { SOURCE_LIMIT } from './pine/lexer';
+  import { runPineIndicator, withPineWorkerTimeout } from './pine/execution';
   import type { SavedScript } from './pine/library';
   export let chart: Vela;
   export let scripts: SavedScript[] = [];
@@ -62,7 +63,9 @@
     message = '';
     const snapshot = source, scriptId = id, scriptName = name.trim();
     try {
-      await validator.prepare(snapshot, 'pine-editor-validation');
+      await withPineWorkerTimeout(validator.prepare(snapshot, 'pine-editor-validation'), {
+        message: 'Pine validation did not respond within 30 seconds. Check the script and try again.',
+      });
       if (!mounted) return;
       if (save) {
         if (!scriptName) throw new Error('Enter a name before saving.');
@@ -87,13 +90,12 @@
     instanceId = aliases.get(instanceId) ?? instanceId;
     const existing = chart.indicators().find(h => h.id === instanceId);
     if (existing) {
-      const result = await existing.updateCode(text);
+      const result = await withPineWorkerTimeout(existing.updateCode(text));
       if (!result.ok) throw result.error;
       existing.setVisible(true);
     } else {
       if (chart.indicators().filter(h => h.id.startsWith('pine:')).length >= 8) throw new Error('Remove a Pine indicator before adding another. The limit is eight.');
-      const result = await chart.runIndicator(text, { id: instanceId, language: 'pine' });
-      if (!result.ok) { chart.indicators().find(h => h.id === instanceId)?.remove(); throw result.error; }
+      await runPineIndicator(chart, text, instanceId);
     }
   }
   function focusError() {
