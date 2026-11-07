@@ -1,0 +1,117 @@
+//@version=6
+indicator("LTF S/R Zones", overlay=true, max_boxes_count=100, max_labels_count=50)
+
+len  = input.int(5, "Pivot length", minval=2)
+wmax = input.float(1.0, "Max zone width (ATR)", step=0.05)
+gap  = input.float(0.15, "Max gap to merge (ATR)", step=0.05, minval=0.0)
+maxN = input.int(12, "Max zones per side", minval=1)
+flip = input.bool(false, "Show flipped zones (S↔R)")
+fAge = input.int(150, "Flipped zone max age (bars)", minval=10)
+fMax = input.int(6, "Max flipped zones", minval=1)
+
+atr = ta.atr(14)
+var box[] rb = array.new_box()
+var int[] rc = array.new_int()
+var box[] sb = array.new_box()
+var int[] sc = array.new_int()
+
+var box[]   fz = array.new_box()
+var int[]   fs = array.new_int()
+var int[]   ft = array.new_int()
+var bool[]  fo = array.new_bool()
+var label[] fl = array.new_label()
+
+f_touch(box[] bs, int[] cs, float zt, float zb, color col) =>
+    bool merged = false
+    int n = array.size(bs)
+    if n > 0
+        for i = 0 to n - 1
+            b = array.get(bs, i)
+            nt = math.max(box.get_top(b), zt)
+            nb = math.min(box.get_bottom(b), zb)
+            g = math.max(zb, box.get_bottom(b)) - math.min(zt, box.get_top(b))
+            if not merged and g <= gap * atr and (nt - nb) <= wmax * atr
+                box.set_top(b, nt)
+                box.set_bottom(b, nb)
+                c = array.get(cs, i) + 1
+                array.set(cs, i, c)
+                if c >= 2
+                    box.set_bgcolor(b, color.new(col, 80))
+                    box.set_border_color(b, color.new(col, 40))
+                merged := true
+    if not merged
+        array.push(bs, box.new(bar_index - len, zt, bar_index, zb, border_color=na, bgcolor=na, extend=extend.right))
+        array.push(cs, 1)
+        if array.size(bs) > maxN
+            box.delete(array.shift(bs))
+            array.shift(cs)
+
+f_break(box[] bs, int[] cs, bool isRes) =>
+    int n = array.size(bs)
+    if n > 0
+        for i = n - 1 to 0
+            b = array.get(bs, i)
+            if (isRes and close > box.get_top(b)) or (not isRes and close < box.get_bottom(b))
+                c = array.get(cs, i)
+                array.remove(bs, i)
+                array.remove(cs, i)
+                bool doFlip = flip and c >= 2
+                if doFlip
+                    box.set_bgcolor(b, na)
+                    box.set_border_color(b, na)
+                    array.push(fz, b)
+                    array.push(fs, isRes ? 1 : -1)
+                    array.push(ft, bar_index)
+                    array.push(fo, false)
+                    array.push(fl, label(na))
+                    if array.size(fz) > fMax
+                        box.delete(array.shift(fz))
+                        array.shift(fs)
+                        array.shift(ft)
+                        array.shift(fo)
+                        label.delete(array.shift(fl))
+                if not doFlip
+                    box.delete(b)
+
+f_flipped() =>
+    int n = array.size(fz)
+    if n > 0
+        for i = n - 1 to 0
+            b = array.get(fz, i)
+            side = array.get(fs, i)
+            t = array.get(ft, i)
+            ok = array.get(fo, i)
+            zt = box.get_top(b)
+            zb = box.get_bottom(b)
+            bool dead = (side == 1 ? close < zb : close > zt) or (bar_index - t > fAge)
+            if dead
+                box.delete(b)
+                label.delete(array.get(fl, i))
+                array.remove(fz, i)
+                array.remove(fs, i)
+                array.remove(ft, i)
+                array.remove(fo, i)
+                array.remove(fl, i)
+            if not dead and not ok and bar_index > t
+                bool hit = side == 1 ? (low <= zt and close > zt) : (high >= zb and close < zb)
+                if hit
+                    col = side == 1 ? color.teal : color.red
+                    box.set_bgcolor(b, color.new(col, 80))
+                    box.set_border_color(b, color.new(col, 40))
+                    box.set_border_style(b, line.style_dashed)
+                    array.set(fo, i, true)
+                    array.set(fl, i, label.new(bar_index + 4, (zt + zb) / 2, side == 1 ? "R→S" : "S→R", style=label.style_none, textcolor=col, size=size.tiny))
+            if not dead and ok
+                label.set_x(array.get(fl, i), bar_index + 4)
+
+ph = ta.pivothigh(len, len)
+pl = ta.pivotlow(len, len)
+
+if not na(ph)
+    f_touch(rb, rc, ph, math.max(open[len], close[len]), color.red)
+if not na(pl)
+    f_touch(sb, sc, math.min(open[len], close[len]), pl, color.teal)
+
+f_break(rb, rc, true)
+f_break(sb, sc, false)
+f_flipped()

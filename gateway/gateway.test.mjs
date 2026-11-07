@@ -82,12 +82,13 @@ test('Narwhal cursors preserve raw front-month series and delayed freshness', as
 test('OANDA gold discovery verifies candle access when the account directory omits it', async () => {
   const p = new Providers(config(), async url => url.endsWith('/instruments')
     ? response({instruments:[{name:'EUR_USD',type:'CURRENCY',displayPrecision:5}]})
-    : response({instrument:'XAU_USD',candles:[{time:row.timestamp,mid:{o:'2500',h:'2510',l:'2490',c:'2505'},volume:17,complete:true}]}));
+    : response({instrument:'XAU_USD',candles:[{time:row.timestamp,mid:{o:'2500.120',h:'2510.000',l:'2490.000',c:'2505.050'},volume:17,complete:true}]}));
   p.pace=async()=>{};
   const gold=(await p.instruments('oanda')).find(i=>i.symbol==='XAU_USD');
   assert.equal(gold?.assetClass,'metals');
   assert.equal(gold?.instrumentType,'cfd');
   assert.equal(gold?.marketDataAccess,'verified_candles');
+  assert.equal(gold?.tickSize,0.001);
   assert.equal(canonical('oanda','XAUUSD'),'XAU_USD');
   assert.equal((await p.instrument('oanda','XAU/USD')).symbol,'XAU_USD');
   const bars=await p.bars('oanda','XAUUSD','15',from,to,500);

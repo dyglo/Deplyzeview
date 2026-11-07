@@ -5,7 +5,7 @@
   import { StreamLanguage } from '@codemirror/language';
   import { Activity, ChevronDown, Maximize2, Minimize2, Minus, Play, Plus, Save, X } from 'lucide-svelte';
   import type { Vela } from '@luxalgo/vela';
-  import { workerJob } from './pine/engine';
+  import { PineEngine } from '@luxalgo/vela-pinets';
   import { SOURCE_LIMIT } from './pine/lexer';
   import type { SavedScript } from './pine/library';
   export let chart: Vela;
@@ -30,6 +30,7 @@
   let scrollRatio = 0;
   let viewportRatio = 0.2;
   let previewLines = source;
+  const validator = new PineEngine();
   $: previewLines = source.split('\n').slice(0, 320).map(line => line.slice(0, 48)).join('\n');
 
   export function open(script: SavedScript) {
@@ -61,7 +62,7 @@
     message = '';
     const snapshot = source, scriptId = id, scriptName = name.trim();
     try {
-      await workerJob(snapshot).promise;
+      await validator.prepare(snapshot, 'pine-editor-validation');
       if (!mounted) return;
       if (save) {
         if (!scriptName) throw new Error('Enter a name before saving.');
@@ -74,7 +75,7 @@
         message = 'Saved. Run to apply this revision.';
       } else {
         await runSource(snapshot, 'pine:' + (scriptId || 'draft'));
-        message = 'Running on the active chart.';
+        message = 'Run complete. Applied to the active chart.';
       }
     } catch (error) { message = error instanceof Error ? error.message : String(error); }
     finally { busy = false; }
@@ -91,7 +92,7 @@
       existing.setVisible(true);
     } else {
       if (chart.indicators().filter(h => h.id.startsWith('pine:')).length >= 8) throw new Error('Remove a Pine indicator before adding another. The limit is eight.');
-      const result = await chart.runIndicator(text, { id: instanceId, language: 'deplyze-pine' });
+      const result = await chart.runIndicator(text, { id: instanceId, language: 'pine' });
       if (!result.ok) { chart.indicators().find(h => h.id === instanceId)?.remove(); throw result.error; }
     }
   }
@@ -199,7 +200,7 @@
     </div>
   </div>
   {#if message}<div class="pine-feedback" role="status"><button class="message" type="button" onclick={focusError}>{message}</button></div>{/if}
-  <footer class="pine-statusbar"><span class="pine-language">Pine Script · v5</span><span class="status-spacer"></span><span>Line {cursorLine}, Col {cursorColumn}</span><span class="status-divider"></span><span>UTF-8</span><span class="status-divider"></span><span>Spaces: 2</span></footer>
+  <footer class="pine-statusbar"><span class="pine-language">Pine Script · v5/v6</span><span class="status-spacer"></span><span>Line {cursorLine}, Col {cursorColumn}</span><span class="status-divider"></span><span>UTF-8</span><span class="status-divider"></span><span>Spaces: 2</span></footer>
 </section>
 
 <style>

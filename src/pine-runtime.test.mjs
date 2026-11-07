@@ -4,6 +4,144 @@ import { compile,evaluate,RuntimeSession } from './pine/runtime.ts';
 import { readLibrary,writeLibrary } from './pine/library.ts';
 const bars = values => values.map((close,i)=>({time:i+1,open:close,high:close+1,low:close-1,close,volume:100}));
 const run = (body,values=[1,2,3,4,5]) => evaluate(compile('//@version=5\nindicator("Test", overlay=true)\n'+body),bars(values)).plots[0].points.map(p=>p.value);
+const compileBody = body => compile('//@version=5\nindicator("Test", overlay=true)\n'+body);
+
+test('Pine v5 const declarations preserve values, enforce their type, and reject reassignment',()=>{
+  assert.deepEqual(run('const int FRESH = 0\nplot(FRESH)',[1,2]),[0,0]);
+  assert.deepEqual(run('const int FRESH = math.max(1, 5 / 2)\nplot(FRESH)',[1]),[2]);
+  assert.deepEqual(run('const int FRESH = 0\nvar const int TESTED = FRESH + 1\nconst bool VALID = FRESH != TESTED\nplot(VALID ? TESTED : FRESH)',[1,2]),[1,1]);
+  const program=compileBody('const string TITLE = "Fresh"\nconst color TONE = color.new(color.green, 20)\nplot(close, TITLE, TONE)');
+  assert.equal(program.plots[0].title,'Fresh');
+  assert.equal(program.plots[0].color,'#4CAF50cc');
+  const fromFunction=compileBody('makeTitle(const string prefix) => prefix + " zones"\nconst string TITLE = makeTitle("Fresh")\nplot(close, TITLE)');
+  assert.equal(fromFunction.plots[0].title,'Fresh zones');
+  for (const [body,diagnostic] of [
+    ['const FRESH = 0',/explicit type/],
+    ['const int FRESH = 0.0',/integer expression/],
+    ['const color TONE = "#FFFFFF"',/Invalid const declaration type/],
+    ['const int FRESH = bar_index',/compile-time constant/],
+    ['length = input.int(3)\nconst int FRESH = length + 1',/compile-time constant/],
+    ['length = input.int(3)\nconst int FRESH = length > 2 ? 1 : 0',/compile-time constant/],
+    ['const int FRESH = 0\nFRESH := 1',/Cannot reassign const variable FRESH/],
+  ]) assert.throws(()=>compileBody(body+'\nplot(close)'),diagnostic);
+});
+
+test('Pine v5 keyed switch returns from the first matching branch in a function',()=>{
+  const program=compileBody(`const int FRESH = 0
+const int TESTED = 1
+const int MITIGATED = 2
+int freshTransparency = input.int(85)
+int testedTransparency = input.int(90)
+int mitigatedTransparency = input.int(95)
+int invalidTransparency = input.int(97)
+f_transparency(int state) =>
+
+    switch state
+
+        FRESH => freshTransparency
+
+        TESTED => testedTransparency
+        MITIGATED => mitigatedTransparency
+        => invalidTransparency
+transparencyFor(int state) => f_transparency(state)
+plot(transparencyFor(bar_index))`);
+  const values = new RuntimeSession(program).run(bars([1,2,3,4]),{freshTransparency:80});
+  assert.deepEqual(values.plots[0].points.map(point=>point.value),[80,90,95,97]);
+});
+
+test('Pine v5 switch scopes branch locals and evaluates only the selected branch',()=>{
+  assert.deepEqual(run(`value = 100
+count = 0
+float selected = switch
+    close > 2 =>
+        count := count + 1
+        const int value = 20
+        value
+    close > 1 =>
+        count := count + 10
+        float value = 10
+        value
+plot(na(selected) ? value : selected + count)`,[1,2,3]),[100,20,21]);
+  assert.deepEqual(run(`count = 0
+switch bar_index
+    0 => count := 1
+    0 => count := 2
+    => count := 3
+plot(count)`,[1,2]),[1,3]);
+  assert.deepEqual(run(`int selected = switch bar_index
+    1 => 20
+plot(selected)`,[1,2,3]),[null,20,null]);
+  assert.deepEqual(run(`float value = close
+globalValue() => value
+result = switch bar_index
+    1 =>
+        float value = value + 1
+        value + globalValue()
+    => float(na)
+plot(result)`,[1,2,3]),[null,5,null]);
+  assert.deepEqual(run(`var array<int> calls = array.new<int>()
+next() =>
+    calls.push(1)
+    calls.size()
+result = switch next()
+    0 => 0
+    1 => 1
+    next() => 99
+    => 3
+plot(result + calls.size())`,[1]),[2]);
+});
+
+test('Pine v5 switch checks every branch, keys, and default placement',()=>{
+  for (const [body,diagnostic] of [
+    ['x = switch 1\n    "1" => 2',/case type must match/],
+    ['x = switch\n    "yes" => 2',/condition must be Boolean or numeric/],
+    ['x = switch 1\n    1 => 2\n    => "different"',/compatible types/],
+    ['x = switch 1\n    => 2\n    1 => 3',/default switch branch must be last/],
+    ['x = switch 1\n    1 => 2\n    => missing',/Undeclared identifier/],
+    ['x = switch 1\n    1 =>\n        a = 2\n        a\n    => a',/Undeclared identifier/],
+    ['x = switch close\n    1 => ta.sma(close, 2)',/Stateful TA calls must execute unconditionally/],
+    ['var int mode = 0\nx = switch mode\n    0 => ta.sma(close, 2)\nmode := bar_index',/Stateful TA calls must execute unconditionally/],
+    ['x = switch\n    true => plot(close)',/Plots must be top-level/],
+  ]) assert.throws(()=>compileBody(body+'\nplot(close)'),diagnostic);
+  const program=compileBody(`mode = input.string("SMA", options=["SMA", "EMA"])
+average = switch mode
+    "SMA" => ta.sma(close, 2)
+    "EMA" => ta.ema(close, 2)
+plot(average)`);
+  assert.deepEqual(evaluate(program,bars([1,2,3])).plots[0].points.map(point=>point.value),[null,1.5,2.5]);
+  assert.deepEqual(new RuntimeSession(program).run(bars([3,6,7]),{mode:'EMA'}).plots[0].points.map(point=>point.value),[3,5,19/3]);
+});
+
+test('same-symbol request.security keeps record state separate and merges confirmed candles',()=>{
+  const program=compileBody(`type Snapshot
+
+    array<int> levels
+    int closeTime
+snapshot() =>
+    var array<int> levels = array.new<int>()
+    int count = array.size(levels)
+    count += 1
+    array.push(levels, count)
+    Snapshot.new(array.copy(levels), time_close)
+Snapshot requested = request.security(syminfo.tickerid, "60", snapshot()[1], lookahead=barmerge.lookahead_on)
+plot(na(requested) ? 0 : array.size(requested.levels))
+plot(na(requested) ? 0 : requested.closeTime)`);
+  const hour=3_600_000, start=Date.UTC(2026,0,1);
+  const makeBars=(closes,interval)=>bars(closes).map((bar,index)=>({...bar,time:start+index*interval}));
+  const hourly=makeBars([1,2,3,999],hour);
+  const chart=makeBars(Array.from({length:10},(_,i)=>i+1),hour/4);
+  const market={symbol:'TEST:TEST',timeframe:'15',series:{60:hourly}};
+  const session=new RuntimeSession(program);
+  const result=session.run(chart,{},false,market);
+  assert.deepEqual(result.plots[0].points.map(point=>point.value),[0,0,0,0,1,1,1,1,2,2]);
+  assert.equal(result.plots[1].points.at(-1).value,start+2*hour);
+  assert.deepEqual(session.run(chart.slice(0,7),{},false,market).plots[0].points.map(point=>point.value),[0,0,0,0,1,1,1]);
+
+  const lower=compileBody('plot(request.security(syminfo.tickerid, "60", close, lookahead=barmerge.lookahead_off))');
+  const fourHours=makeBars([8,9],4*hour);
+  assert.deepEqual(evaluate(lower,fourHours,undefined,undefined,{},false,{...market,timeframe:'240'}).plots[0].points.map(p=>p.value),[999,999]);
+  assert.deepEqual(evaluate(lower,fourHours,undefined,undefined,{},true,{...market,timeframe:'240'}).plots[0].points.map(p=>p.value),[999,999]);
+});
 test('TA reference values and warm-up',()=>{
   assert.deepEqual(run('plot(ta.sma(close, 3))'),[null,null,2,3,4]);
   assert.deepEqual(run('plot(ta.ema(close, 3))'),[1,1.5,2.25,3.125,4.0625]);

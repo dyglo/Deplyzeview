@@ -1,10 +1,10 @@
 <script lang="ts">
   import PineEditor from './PineEditor.svelte';
   import { readLibrary, writeLibrary, type SavedScript } from './pine/library';
-  import type { AppTheme } from './chart-theme';
-  import appIcon from '../src-tauri/icons/icon.png';
-  import { defaultTimezone, timezoneChoices, formatClock } from './timezones';
-  import { onMount } from 'svelte';
+import type { AppTheme } from './chart-theme';
+import appIcon from '../src-tauri/icons/icon.png';
+import { defaultTimezone, timezoneChoices, formatClock } from './timezones';
+import { onMount } from 'svelte';
   import ToolRail from './ToolRail.svelte';
   import { drawingGroups } from './drawing-catalog';
   import type { DrawingToolPreferences } from './drawing-catalog';
@@ -18,11 +18,13 @@
   import { fetchWatchlistQuote, type WatchlistQuote } from './watchlist-quotes';
   import { addWatchlistItem, writeWatchlist, rightPanelKey, type InstrumentSearchResult, type WatchlistItem } from './watchlist';
   import { chartStyles, isChartStyle, setPriceAppearance, type ChartStyleId } from './chart-styles';
-  import { defaultCandleColors, defaultExtras, readPreferences, writePreferences, type ChartExtras } from './chart-preferences';
-  import { type Vela, type ChartConfig } from '@luxalgo/vela';
+import { defaultCandleColors, defaultExtras, readPreferences, writePreferences, type ChartExtras } from './chart-preferences';
+import { type Vela, type ChartConfig } from '@luxalgo/vela';
   import { VelaWorkspace, registerLayout } from '@luxalgo/vela/workspace';
-  import { NativePineEngine } from './pine/engine';
+  import { PineWorkerEngine } from '@luxalgo/vela-pinets';
   import { RustMarketDataProvider } from './data-provider';
+  // @ts-ignore The helper is plain ESM so it can also be covered by Node's test runner.
+  import { normalizeReplayViewport } from './replay-viewport.mjs';
   import { captureChartPng } from './chart-screenshot';
   import './footprint';
   import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink } from './footprint';
@@ -159,14 +161,15 @@
     } catch { persistenceError = true; }
     const initialTheme = savedLegacy?.extras.theme ?? 'dark';
     try { drawingsSync = window.localStorage.getItem(drawingSyncKey) === '1'; } catch { persistenceError = true; }
-    const providers = Object.fromEntries(['binance', 'coinbase', 'hyperliquid', 'oanda', 'narwhal', 'finzdata'].map(provider => [provider, () => new RustMarketDataProvider(provider as TradeVenue)]));
+    const venues = ['binance', 'coinbase', 'hyperliquid', 'oanda', 'narwhal', 'finzdata'] as const;
+    const providers = Object.fromEntries(venues.map(provider => [provider, () => new RustMarketDataProvider(provider)]));
     const mountedWorkspace = new VelaWorkspace(chartHost, {
       layout: '1',
       cells: Object.fromEntries(cellIds.map((id, index) => [id, { symbol: index === 0 ? chartSymbol() : 'BINANCE:BTCUSDT', timeframe: index === 0 ? timeframeCode(timeframe) : '60' }])),
       symbol: chartSymbol(), timeframe: timeframeCode(timeframe), bars: 500, live: true,
       theme: initialTheme, upColor: '#8a746e', downColor: '#c16f61', currentPriceLine: true,
       volume: true, drawings: { toolbar: false }, animations: { intro: false, zoom: true, pan: true },
-      providers, engines: { 'deplyze-pine': () => new NativePineEngine() },
+      providers, engines: { pine: () => new PineWorkerEngine() },
       statusline: true, watermark: false, bottombar: false, topbar: { left: [], right: [] },
       drawingToolbar: false, sync: {}, maxWebglCells: 4, layoutMode: 'desktop', autofocus: false,
       persist: workspaceStateKey,
@@ -514,6 +517,32 @@
     return { destroy() { observer.disconnect(); shell?.style.removeProperty('--workspace-dock-width'); } };
   }
   function timeframeCode(value: string) { return value === '1D' ? '1D' : value === '1h' ? '60' : value === '4h' ? '240' : value.slice(0, -1); }
+  function waitForTimeframeLoad(chart: Vela, nextTimeframe: string) {
+    if (chart.market.timeframe === nextTimeframe) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      let finished = false;
+      let marketChanged = false;
+      let historyComplete = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (force = false) => {
+        if (!force && (!marketChanged || !historyComplete)) return;
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        offMarket();
+        offHistory();
+        resolve();
+      };
+      const offMarket = chart.on('market:changed', (event) => {
+        if (event.timeframe === nextTimeframe) { marketChanged = true; finish(); }
+      });
+      const offHistory = chart.on('history:complete', () => { historyComplete = true; finish(); });
+      timer = setTimeout(() => finish(true), 10_000);
+    });
+  }
+  function nextPaint() {
+    return new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  }
   function openSymbolSearchForCell(id: string) {
     if (!workspace?.cell(id)) return;
     timeframeMenuOpen = false;
@@ -523,7 +552,15 @@
     searchOpen = true;
   }
   function closeSymbolSearch() { searchOpen = false; searchTargetCellId = ''; }
-  function chooseTimeframe(value: string) {
+  let timeframeChangeRevision = 0;
+  async function chooseTimeframe(value: string) {
+    const revision = ++timeframeChangeRevision;
+    const cell = workspace?.active;
+    const chart = cell?.chart;
+    const nextTimeframe = timeframeCode(value);
+    const previousTimeframe = chart?.market.timeframe ?? nextTimeframe;
+    const previousRange = chart?.getVisibleRange() ?? null;
+    const previousReplayCursor = chart?.replay.state.active ? chart.replay.state.cursorTime : null;
     timeframe = value;
     if (!timeframeFavorites.includes(value)) {
       timeframeFavorites = [...timeframeFavorites, value];
@@ -531,7 +568,17 @@
     }
     timeframeMenuOpen = false;
     timeframeMenuAnchor = null;
-    workspace?.active.setTimeframe(timeframeCode(value));
+    if (!chart) return;
+    const loaded = waitForTimeframeLoad(chart, nextTimeframe);
+    cell?.setTimeframe(nextTimeframe);
+    await loaded;
+    if (revision !== timeframeChangeRevision) return;
+    await nextPaint();
+    if (revision !== timeframeChangeRevision) return;
+    const replay = chart.replay.state;
+    chart.resize();
+    const range = normalizeReplayViewport(previousRange, replay.active ? replay.cursorTime ?? previousReplayCursor : null, previousTimeframe, nextTimeframe);
+    if (range) chart.setVisibleRange(range);
   }
   function timeframeMenuPosition(cellId: string) {
     const meta = workspace?.cell(cellId)?.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-meta');

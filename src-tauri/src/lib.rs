@@ -39,6 +39,7 @@ pub fn run() {
             symbol_search::search_market_instruments,
             market_data::subscribe_market_feed,
             market_data::get_market_bars,
+            market_data::get_market_tick_size,
             market_data::unsubscribe_market_feed,
             market_data::query_footprint_history,
             market_data::get_feed_health
