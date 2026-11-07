@@ -332,6 +332,17 @@ async fn tick_size_for(client: &reqwest::Client, venue: &str, symbol: &str) -> R
     }
 }
 
+#[tauri::command]
+pub async fn get_market_tick_size(venue: String, instrument: String) -> Result<f64, String> {
+    let (venue, instrument) = validate_market(&venue, &instrument)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent("DeplyzeView/0.1 market-data")
+        .build()
+        .map_err(|error| error.to_string())?;
+    tick_size_for(&client, &venue, &instrument).await
+}
+
 fn parse_timestamp(value: &Value) -> Option<i64> {
     value
         .as_i64()

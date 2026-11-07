@@ -22,6 +22,7 @@ function intervalMs(timeframe: string) {
 export class RustMarketDataProvider {
   private readonly candleCache = new Map<string, Map<number, Ohlcv>>();
   private readonly candleSnapshotAt = new Map<string, number>();
+  private readonly tickSizes = new Map<string, Promise<number | undefined>>();
   constructor(private readonly venue: TradeVenue) {}
 
   info() {
@@ -33,6 +34,17 @@ export class RustMarketDataProvider {
     if (!isGatewayVenue(this.venue)) return undefined;
     const instrument = await invoke<{ instrumentType: string; quoteCurrency?: string; tickSize?: number; exchange?: string }>('get_remote_market_data', { provider: this.venue, action: 'instrument', instrument: ticker });
     return { ticker, type: instrument.instrumentType, currency: instrument.quoteCurrency, mintick: instrument.tickSize, prefix: instrument.exchange ?? this.venue.toUpperCase(), timezone: 'Etc/UTC' };
+  }
+
+  getPineTickSize(ticker: string): Promise<number | undefined> {
+    const cached=this.tickSizes.get(ticker);
+    if(cached)return cached;
+    const pending=(isGatewayVenue(this.venue)
+      ? this.getSymbolInfo(ticker).then(info=>info?.mintick)
+      : invoke<number>('get_market_tick_size',{venue:this.venue,instrument:ticker})
+    ).catch(error=>{this.tickSizes.delete(ticker);throw error;});
+    this.tickSizes.set(ticker,pending);
+    return pending;
   }
 
   async getBars(ticker: string, timeframe: string, range: BarRange): Promise<Ohlcv[]> {

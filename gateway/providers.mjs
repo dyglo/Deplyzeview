@@ -124,9 +124,13 @@ export class Providers {
             const latest = gold.candles?.at(-1);
             if (gold.instrument === 'XAU_USD' && latest) {
               candle({timestamp:latest.time,open:latest.mid?.o,high:latest.mid?.h,low:latest.mid?.l,close:latest.mid?.c}, {});
+              // Preserve the precision of OANDA's raw midpoint strings, including trailing zeroes.
+              const precision = Math.max(...Object.values(latest.mid).map(value =>
+                typeof value === 'string' ? (/^\d+\.(\d+)$/.exec(value)?.[1].length ?? 0) : 0));
               instruments.push({ provider, symbol:'XAU_USD', instrumentId:'XAU_USD', name:'Gold / US Dollar',
                 assetClass:'metals', instrumentType:'cfd', providerInstrumentType:'METAL', exchange:null,
                 contractExpiry:null, priceSource:'midpoint', volumeType:'unavailable', quoteCurrency:'USD',
+                ...(precision > 0 ? { tickSize:10 ** -precision } : {}),
                 tags:[], delayMs:0, listedInAccountDirectory:false, marketDataAccess:'verified_candles' });
             }
           } catch { /* Optional gold failure must not remove healthy forex instruments. */ }
