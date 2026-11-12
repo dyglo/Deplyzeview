@@ -40,7 +40,7 @@ test('storage write failure is safely reported', () => {
   assert.equal(writeWatchlist({ setItem() { throw new Error('quota'); } }, []), false);
 });
 
-import { readWatchlists, watchlistsKey, watchlistCategory, reorderWatchlist, formatWatchlistNumber } from './watchlist.ts';
+import { readWatchlists, watchlistsKey, watchlistCategory, reorderWatchlist, formatWatchlistNumber, formatWatchlistPriceParts } from './watchlist.ts';
 test('named lists migrate legacy symbols and restore the active list independently', () => {
   const rows = [instrument('oanda', 'EUR_USD', 'cfd')];
   const legacy = readWatchlists({ getItem: key => key === watchlistKey ? JSON.stringify(rows) : null });
@@ -52,6 +52,7 @@ test('categories and reordering preserve instrument identities and category boun
   const a = instrument('binance', 'BTCUSDT');
   const b = instrument('binance', 'ETHUSDT');
   const c = { ...instrument('oanda', 'EUR_USD', 'cfd'), assetClass: 'forex' };
+  const gold = { ...instrument('oanda', 'XAU_USD', 'cfd'), assetClass: 'commodities', symbol: 'XAUUSD' };
   assert.equal(watchlistCategory(c), 'Forex');
   assert.equal(watchlistCategory(instrument('finzdata', 'ES', 'exchange_futures')), 'Futures');
   assert.deepEqual(reorderWatchlist([a,b,c], a.identity,b.identity), [b,a,c]);
@@ -59,4 +60,8 @@ test('categories and reordering preserve instrument identities and category boun
   assert.equal(formatWatchlistNumber(1.0876,c), '1.08760');
   assert.equal(formatWatchlistNumber(-0.00032,c,true), '−0.00032');
   assert.equal(formatWatchlistNumber(null,c), '—');
+  assert.deepEqual(formatWatchlistPriceParts(1.08767, c), { main: '1.0876', pip: '7' });
+  assert.deepEqual(formatWatchlistPriceParts(4031.655, gold), { main: '4,031.65', pip: '5' });
+  assert.deepEqual(formatWatchlistPriceParts(50000.5, a), { main: '50,000.50' });
+  assert.deepEqual(formatWatchlistPriceParts(null, c), { main: '—' });
 });

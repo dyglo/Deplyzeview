@@ -24,8 +24,9 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
   import { PineWorkerEngine } from '@luxalgo/vela-pinets';
   import { RustMarketDataProvider } from './data-provider';
   // @ts-ignore The helper is plain ESM so it can also be covered by Node's test runner.
-  import { normalizeReplayViewport } from './replay-viewport.mjs';
+  import { sanitizeBarSpacing } from './replay-viewport.mjs';
   import { captureChartPng } from './chart-screenshot';
+  import { installDrawingEnhancements } from './drawing-tv-style';
   import './footprint';
   import { setFootprintMode, setFootprintTicks, setFootprintUnit, type FootprintMode, type FootprintUnit, setTradeVenue, type TradeVenue, type FeedHealth, setFeedHealthSink } from './footprint';
   import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Camera, Eye, Minus, Settings2, Square, Undo2, CandlestickChart, X, SlidersHorizontal, Bookmark, Search, Plus, UserRound, History, Layers, Sparkles, Target, Mountain, Radio, Bell, MessagesSquare, Grid3X3, CircleHelp, Star, SkipForward, Play, Pause, MousePointer2, LogOut } from 'lucide-svelte';
@@ -167,7 +168,7 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       layout: '1',
       cells: Object.fromEntries(cellIds.map((id, index) => [id, { symbol: index === 0 ? chartSymbol() : 'BINANCE:BTCUSDT', timeframe: index === 0 ? timeframeCode(timeframe) : '60' }])),
       symbol: chartSymbol(), timeframe: timeframeCode(timeframe), bars: 500, live: true,
-      theme: initialTheme, upColor: '#8a746e', downColor: '#c16f61', currentPriceLine: true,
+      theme: initialTheme, upColor: defaultCandleColors.upColor, downColor: defaultCandleColors.downColor, currentPriceLine: true,
       volume: true, drawings: { toolbar: false }, animations: { intro: false, zoom: true, pan: true },
       providers, engines: { pine: () => new PineWorkerEngine() },
       statusline: true, watermark: false, bottombar: false, topbar: { left: [], right: [] },
@@ -177,14 +178,15 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     workspace = mountedWorkspace;
     layoutId = mountedWorkspace.layout.id;
     const defaultConfig = (chart: Vela) => {
+      installDrawingEnhancements(chart);
       chart.renderer.set({ settings: false, attribution: false });
       const config = chart.renderer.getConfig() as ChartConfig;
       config.candles = { ...config.candles, ...defaultCandleColors };
       config.timeScale.timezone = defaultTimezone;
       config.layout.background = '#101114';
       config.layout.textColor = '#a3a5ab';
-      config.grid.vertLines.color = '#25272d';
-      config.grid.horzLines.color = '#25272d';
+      config.grid.vertLines.color = '#181a20';
+      config.grid.horzLines.color = '#181a20';
       config.priceScale.borderColor = 'transparent';
       config.panes.separatorColor = 'transparent';
       return config;
@@ -356,7 +358,22 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       }
       chart.drawings.showToolbar(false);
       if (!savedWorkspace) chart.renderer.applyConfig(id === 'chartA' && savedLegacy ? savedLegacy.config : defaultConfig(chart));
-      else if (cellExtrasById[id]) applyCellExtras(chart, cellExtrasById[id]);
+      else {
+        const cfg = chart.renderer.getConfig() as ChartConfig;
+        const patch: Partial<ChartConfig> = {};
+        if (cfg.candles?.upColor?.toLowerCase() === '#8a746e' && cfg.candles?.downColor?.toLowerCase() === '#c16f61') {
+          patch.candles = { ...cfg.candles, ...defaultCandleColors };
+        }
+        if ((cellExtrasById[id]?.theme ?? 'dark') === 'dark' && cfg.grid?.vertLines?.color?.toLowerCase() === '#25272d' && cfg.grid?.horzLines?.color?.toLowerCase() === '#25272d') {
+          patch.grid = {
+            ...cfg.grid,
+            vertLines: { ...cfg.grid.vertLines, color: '#181a20' },
+            horzLines: { ...cfg.grid.horzLines, color: '#181a20' },
+          };
+        }
+        if (Object.keys(patch).length > 0) chart.renderer.applyConfig(patch);
+        if (cellExtrasById[id]) applyCellExtras(chart, cellExtrasById[id]);
+      }
       let customDraft: unknown = null;
       let customSelection: string[] = [];
       const syncCustomDrawings = () => pushCustomDrawingData(chart.renderer, chart, customDraft, customSelection);
@@ -558,9 +575,9 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     const cell = workspace?.active;
     const chart = cell?.chart;
     const nextTimeframe = timeframeCode(value);
-    const previousTimeframe = chart?.market.timeframe ?? nextTimeframe;
-    const previousRange = chart?.getVisibleRange() ?? null;
-    const previousReplayCursor = chart?.replay.state.active ? chart.replay.state.cursorTime : null;
+    const rendererCoords = (chart?.renderer as unknown as { coords?: { width?: number; getViewport?: () => { barSpacing: number; rightOffset: number }; setViewport?: (v: { barSpacing: number; rightOffset: number }) => void } } | undefined)?.coords;
+    const previousViewport = rendererCoords?.getViewport?.();
+    const preservedBarSpacing = sanitizeBarSpacing(previousViewport?.barSpacing, rendererCoords?.width ?? chartHost?.clientWidth);
     timeframe = value;
     if (!timeframeFavorites.includes(value)) {
       timeframeFavorites = [...timeframeFavorites, value];
@@ -569,16 +586,16 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     timeframeMenuOpen = false;
     timeframeMenuAnchor = null;
     if (!chart) return;
+    if (rendererCoords?.setViewport && previousViewport) {
+      rendererCoords.setViewport({ barSpacing: preservedBarSpacing, rightOffset: previousViewport.rightOffset });
+    }
     const loaded = waitForTimeframeLoad(chart, nextTimeframe);
     cell?.setTimeframe(nextTimeframe);
     await loaded;
     if (revision !== timeframeChangeRevision) return;
     await nextPaint();
     if (revision !== timeframeChangeRevision) return;
-    const replay = chart.replay.state;
     chart.resize();
-    const range = normalizeReplayViewport(previousRange, replay.active ? replay.cursorTime ?? previousReplayCursor : null, previousTimeframe, nextTimeframe);
-    if (range) chart.setVisibleRange(range);
   }
   function timeframeMenuPosition(cellId: string) {
     const meta = workspace?.cell(cellId)?.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-meta');
@@ -856,6 +873,21 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     watchlists = { ...watchlists, lists: [...watchlists.lists, { id, name, items: [] }] };
     switchWatchlist(id);
   }
+  function renameWatchlist(id: string, name: string) {
+    const trimmed = name.trim().slice(0, 40);
+    if (!trimmed) return;
+    watchlists = { ...watchlists, lists: watchlists.lists.map(list => list.id === id ? { ...list, name: trimmed } : list) };
+    persistWatchlists();
+  }
+  function deleteWatchlist(id: string) {
+    if (watchlists.lists.length <= 1) return;
+    const nextLists = watchlists.lists.filter(list => list.id !== id);
+    const nextActive = watchlists.activeId === id ? nextLists[0].id : watchlists.activeId;
+    watchlists = { activeId: nextActive, lists: nextLists };
+    watchlist = nextLists.find(list => list.id === nextActive)!.items;
+    persistWatchlists();
+    void refreshWatchlistQuotes();
+  }
   async function refreshWatchlistQuotes() {
     if (!panelOpen || !watchlist.length) return;
     if (quoteRefreshActive) { quoteRefreshPending = true; return; }
@@ -1073,7 +1105,7 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     <div class="workspace-dock" style:flex={pineOpen ? `${pineMaximized ? 1 : pinePanelWidth} 1 0%` : undefined} use:trackWorkspaceDockWidth>
       {#if vela}<div style:display={pineOpen ? 'contents' : 'none'}><PineEditor chart={vela} scripts={pineScripts} persist={persistPine} onClose={() => { pineOpen = false; pineMaximized = false; }} maximized={pineMaximized} onMaximize={togglePineMaximize} bind:this={pineEditor}/></div>{/if}
       {#if panelOpen && !pineOpen}
-        <Watchlist items={watchlist} collection={watchlists} quotes={watchlistQuotes} {symbol} provider={venueId} loading={watchlistQuotesLoading} storageError={watchlistError} select={selectInstrument} add={() => searchOpen = true} remove={removeFromWatchlist} reorder={saveWatchlist} switchList={switchWatchlist} createList={createWatchlist} refresh={() => void refreshWatchlistQuotes()}/>
+        <Watchlist items={watchlist} collection={watchlists} quotes={watchlistQuotes} {symbol} provider={venueId} loading={watchlistQuotesLoading} storageError={watchlistError} select={selectInstrument} add={() => searchOpen = true} remove={removeFromWatchlist} reorder={saveWatchlist} switchList={switchWatchlist} createList={createWatchlist} renameList={renameWatchlist} deleteList={deleteWatchlist} refresh={() => void refreshWatchlistQuotes()}/>
       {/if}
       <nav class="workspace-rail" aria-label="Workspace panels">
         <button class:rail-active={panelOpen} aria-label={panelOpen ? 'Close watchlist panel' : 'Open watchlist panel'} title="Watchlist" aria-pressed={panelOpen} onclick={() => { pineOpen = false; toggleWorkspacePanel(); }}><Bookmark size={18}/></button>
