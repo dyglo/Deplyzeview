@@ -14,10 +14,24 @@ export function timeframeDurationMs(timeframe) {
 }
 
 /**
- * Keep the user's approximate visible candle count when a new timeframe loads.
- * Preserving timestamps instead makes a timeframe switch change bar density
- * dramatically. During replay, keep the cursor at the same visual position
- * where possible and cap future whitespace to two new bars.
+ * Sanitize logical bar spacing (CSS pixels per bar) across timeframe transitions
+ * and layout changes so candles remain readable and consistently sized.
+ */
+export function sanitizeBarSpacing(barSpacing, width = 1080, defaultBars = 120) {
+  const safeWidth = Number.isFinite(width) && width > 0 ? width : 1080;
+  const fallback = Math.max(6, Math.min(12, safeWidth / Math.max(20, defaultBars)));
+  if (!Number.isFinite(barSpacing) || barSpacing < 2 || barSpacing > 60) {
+    return fallback;
+  }
+  return barSpacing;
+}
+
+/**
+ * Keep the user's approximate visible candle count when normalizing a timestamp
+ * viewport. Non-replay switches anchor the right edge at `previous.to` so
+ * switching to a higher timeframe never projects empty space into the future.
+ * During replay, keep the cursor at the same visual position where possible and
+ * cap future whitespace to two new bars.
  */
 export function normalizeReplayViewport(previous, replayCursor, previousTimeframe, timeframe) {
   if (!previous || !Number.isFinite(previous.from) || !Number.isFinite(previous.to)) return null;
@@ -29,8 +43,7 @@ export function normalizeReplayViewport(previous, replayCursor, previousTimefram
   const span = Math.max(nextInterval, visibleBars * nextInterval);
   if (!Number.isFinite(span) || span <= 0) return null;
   if (!Number.isFinite(replayCursor)) {
-    const center = (previous.from + previous.to) / 2;
-    return { from: center - span / 2, to: center + span / 2 };
+    return { from: previous.to - span, to: previous.to };
   }
 
   const cursor = replayCursor;

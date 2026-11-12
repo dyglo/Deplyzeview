@@ -3,6 +3,7 @@
   import designIcons from '../design/tool-icons.json';
   import toolbarHtml from '../design/Toolbar.dc.html?raw';
   import { customToolType } from './custom-drawing-tools';
+  import { setPositionToolPreferredDirection } from './drawing-tv-style';
 
   type Tool = { id: string | null; key: string; label: string; labelText: string; icon: string; shortcut: string; section: string };
   type Group = { id: string; label: string; tools: Tool[]; sections: { title: string; tools: Tool[] }[] };
@@ -130,6 +131,12 @@
   function pick(t: Tool, g: Group) {
     if (!t.id) return;
     leaveMeasure();
+    const lbl = t.labelText.toLowerCase();
+    if (lbl.includes('short')) {
+      setPositionToolPreferredDirection('short');
+    } else if (lbl.includes('long')) {
+      setPositionToolPreferredDirection('long');
+    }
     chart.drawings.setTool(t.id);
     prefs = { ...prefs, lastUsed: { ...prefs.lastUsed, [g.id]: t.id } };
     openId = null;
@@ -274,7 +281,13 @@
       <svg width="16" height="28" viewBox="0 0 16 28" aria-hidden="true" fill="currentColor"><circle cx="6" cy="9" r="1.1"/><circle cx="10" cy="9" r="1.1"/><circle cx="6" cy="14" r="1.1"/><circle cx="10" cy="14" r="1.1"/><circle cx="6" cy="19" r="1.1"/><circle cx="10" cy="19" r="1.1"/></svg>
     </div>
     {#each favTools as t (t.key)}
-      <button class="tr-fv" class:on={active === t.id} aria-label={t.labelText} title={t.labelText} onclick={() => t.id && chart.drawings.setTool(t.id)}>
+      <button class="tr-fv" class:on={active === t.id} aria-label={t.labelText} title={t.labelText} onclick={() => {
+        if (!t.id) return;
+        const lbl = t.labelText.toLowerCase();
+        if (lbl.includes('short')) setPositionToolPreferredDirection('short');
+        else if (lbl.includes('long')) setPositionToolPreferredDirection('long');
+        chart.drawings.setTool(t.id);
+      }}>
         {@html t.icon}
       </button>
     {/each}

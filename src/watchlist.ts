@@ -108,3 +108,21 @@ export function formatWatchlistNumber(value: number | null | undefined, item: Wa
   const decimals = watchlistCategory(item) === 'Forex' ? (/JPY/.test(item.symbol) ? 3 : 5) : /XAU|XAG/.test(item.symbol) ? 3 : Math.abs(value) > 0 && Math.abs(value) < 1 ? 5 : 2;
   return `${signed && value !== 0 ? value > 0 ? '+' : '−' : ''}${new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(signed ? Math.abs(value) : value)}`;
 }
+
+export function formatWatchlistPriceParts(value: number | null | undefined, item: WatchlistItem): { main: string; pip?: string } {
+  const full = formatWatchlistNumber(value, item, false);
+  if (full === '—') return { main: '—' };
+  const cat = watchlistCategory(item);
+  const isForex = cat === 'Forex';
+  const isMetal = /XAU|XAG/.test(item.symbol);
+  if (isForex || isMetal) {
+    const parts = full.split('.');
+    if (parts.length === 2 && parts[1].length >= 3) {
+      return {
+        main: `${parts[0]}.${parts[1].slice(0, -1)}`,
+        pip: parts[1].slice(-1)
+      };
+    }
+  }
+  return { main: full };
+}
