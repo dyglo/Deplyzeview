@@ -37,7 +37,7 @@ if (env.DEPLYZEVIEW_GATEWAY_URL) {
 }
 // Only the gateway server loads provider credentials. Desktop builds never need them.
 for (const key of Object.keys(env)) {
-  if (/^(OANDA_|NARWHAL_|FINZDATA_|MARKET_DATA_)/.test(key) || (mode === 'build' && key === 'DEPLYZEVIEW_APP_TOKEN')) delete env[key];
+  if (/^(OANDA_|NARWHAL_|FINZDATA_|MARKET_DATA_)/.test(key) || (mode === 'build' && (key === 'DEPLYZEVIEW_APP_TOKEN' || key === 'DEEPSEEK_API_KEY'))) delete env[key];
 }
 const child = spawn(process.execPath, ['node_modules/@tauri-apps/cli/tauri.js', mode], { stdio:'inherit', env });
 child.on('exit', async code => {

@@ -200,3 +200,56 @@ test('OANDA SSE uses provider timestamps and bid/ask quotes, never synthetic tra
   await new Promise(resolve=>setTimeout(resolve,25));
   assert.equal(cancelled,true);
 });
+test('AI Quant gateway endpoints proxy DeepSeek SSE streams and never leak DEEPSEEK_API_KEY', async t => {
+  const logs = [];
+  const encoder = new TextEncoder();
+  const cfg = configuration({
+    MARKET_DATA_APP_TOKENS: token,
+    OANDA_API_TOKEN: 'provider-secret',
+    OANDA_ACCOUNT_ID: 'account',
+    NARWHAL_API_KEY: 'narwhal-secret',
+    DEEPSEEK_API_KEY: 'sk-deepseek-gateway-secret-123',
+    DEEPSEEK_MODEL: 'deepseek-flash',
+  });
+  const p = new Providers(cfg, async (url, options) => {
+    if (url.endsWith('/chat/completions')) {
+      assert.equal(options.headers.Authorization, 'Bearer sk-deepseek-gateway-secret-123');
+      const body = JSON.parse(options.body);
+      assert.equal(body.model, 'deepseek-flash');
+      assert.deepEqual(body.thinking, { type: 'disabled' });
+      return new Response(new ReadableStream({
+        start(ctrl) {
+          ctrl.enqueue(encoder.encode('data: {"choices":[{"index":0,"delta":{"content":"//@version=6\\nindicator(\\"Gateway Test\\")\\n"}}]}\n\n'));
+          ctrl.enqueue(encoder.encode('data: [DONE]\n\n'));
+          ctrl.close();
+        },
+      }), { headers: { 'Content-Type': 'text/event-stream' } });
+    }
+    return response({ ok: true });
+  });
+  const server = createGateway(cfg, p, line => logs.push(line));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.shutdown(); server.closeAllConnections(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const statusRes = await fetch(`${base}/v1/ai-quant/status`, { headers });
+  assert.equal(statusRes.status, 200);
+  const statusJson = await statusRes.json();
+  assert.equal(statusJson.configured, true);
+  assert.equal(statusJson.model, 'deepseek-flash');
+
+  const chatRes = await fetch(`${base}/v1/ai-quant/chat`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      requestId: 'test-req-1',
+      messages: [{ role: 'user', content: 'Build indicator' }],
+    }),
+  });
+  assert.equal(chatRes.status, 200);
+  const sseText = await chatRes.text();
+  assert.match(sseText, /Gateway Test/);
+  assert.match(sseText, /\[DONE\]/);
+  assert.ok(logs.every(line => !line.includes('sk-deepseek-gateway-secret-123') && !line.includes(token)));
+});

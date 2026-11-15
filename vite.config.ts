@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+// @ts-ignore Plain ESM backend middleware shared with Node tests
+import { createAiQuantMiddleware } from './src/ai-quant/deepseek-server.mjs';
 
 function transformVelaCandleRendering(code: string): string {
   if (!code.includes('function candleGeometry(xCss, spacing, dpr')) return code;
@@ -409,6 +411,9 @@ export default defineConfig({
           response.setHeader('Cache-Control', 'no-store');
           response.end(JSON.stringify({ app: 'deplyzeview', root: realpathSync(fileURLToPath(new URL('.', import.meta.url))) }));
         });
+        server.middlewares.use(createAiQuantMiddleware({
+          dotenvPath: fileURLToPath(new URL('./.env', import.meta.url)),
+        }));
       },
     },
   ],

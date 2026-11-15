@@ -36,6 +36,9 @@
 
   export function open(script: SavedScript) {
     if ((source !== savedSource || name !== savedName) && !confirm('Replace the current unsaved editor draft?')) return;
+    loadScriptSilently(script);
+  }
+  export function loadScriptSilently(script: SavedScript) {
     id = script.id;
     name = script.name;
     source = script.source;

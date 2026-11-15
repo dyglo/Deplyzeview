@@ -193,6 +193,19 @@ fn validate_url(value: &str) -> Result<reqwest::Url, String> {
     Ok(url)
 }
 
+pub fn gateway_access(app: &tauri::AppHandle) -> Result<(String, String), String> {
+    let config = effective_config(app)?;
+    let url = config.url.ok_or("Gateway URL is not configured")?;
+    let token = config
+        .app_token
+        .ok_or("Application access is not configured")?;
+    let validated = validate_url(&url)?;
+    Ok((
+        validated.as_str().trim_end_matches('/').to_string(),
+        token,
+    ))
+}
+
 #[tauri::command]
 pub async fn get_remote_market_data(
     app: tauri::AppHandle,

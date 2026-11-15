@@ -1,4 +1,5 @@
 export interface SavedScript { id:string; name:string; source:string; updatedAt:string }
+export const SOURCE_LIMIT = 262_144;
 export const libraryKey = 'deplyze.pine.library.v1';
 export function readLibrary(storage:Pick<Storage,'getItem'>):SavedScript[] {
   const raw = storage.getItem(libraryKey);
@@ -7,7 +8,7 @@ export function readLibrary(storage:Pick<Storage,'getItem'>):SavedScript[] {
   if (data.version !== 1 || !Array.isArray(data.scripts) || data.scripts.length > 100) throw new Error('Invalid Pine library.');
   const ids = new Set<string>();
   for (const script of data.scripts) {
-    if (!script || typeof script.id !== 'string' || !script.id || ids.has(script.id) || typeof script.name !== 'string' || !script.name.trim() || typeof script.source !== 'string' || new TextEncoder().encode(script.source).length > 262144 || typeof script.updatedAt !== 'string') throw new Error('Invalid saved Pine script.');
+    if (!script || typeof script.id !== 'string' || !script.id || ids.has(script.id) || typeof script.name !== 'string' || !script.name.trim() || typeof script.source !== 'string' || new TextEncoder().encode(script.source).length > SOURCE_LIMIT || typeof script.updatedAt !== 'string') throw new Error('Invalid saved Pine script.');
     ids.add(script.id);
   }
   return data.scripts;
