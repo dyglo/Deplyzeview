@@ -1,3 +1,4 @@
+mod ai_quant;
 mod app_paths;
 mod gateway_vault;
 mod market_data;
@@ -21,6 +22,7 @@ pub fn run() {
             market_data::initialize_database(&connection)
                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
             app.manage(market_data::AppState::new(connection));
+            app.manage(ai_quant::AiQuantState::new());
             let window_config = &app.config().app.windows[0];
             let window = tauri::WebviewWindowBuilder::from_config(app, window_config)?;
             // Keep the existing WebView profile (appearance preferences) after
@@ -34,6 +36,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ai_quant::get_ai_quant_status,
+            ai_quant::stream_ai_quant_completion,
+            ai_quant::cancel_ai_quant_stream,
             remote_data::get_remote_market_data,
             symbol_search::get_market_search_catalog,
             symbol_search::search_market_instruments,

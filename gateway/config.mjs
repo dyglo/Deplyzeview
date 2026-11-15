@@ -16,6 +16,10 @@ export function configuration(env = process.env) {
   if (!['free', 'basic', 'pro'].includes(plan)) throw new Error('NARWHAL_PLAN must be free, basic or pro.');
   const port = Number(env.MARKET_DATA_PORT || 8787);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid MARKET_DATA_PORT');
+  const deepseekKey = env.DEEPSEEK_API_KEY?.trim() || '';
+  const deepseekBaseUrl = (env.DEEPSEEK_BASE_URL?.trim() || 'https://api.deepseek.com').replace(/\/+$/, '');
+  const deepseekModel = env.DEEPSEEK_MODEL?.trim() || 'deepseek-flash';
   return { enabled, tokens, port, host: env.MARKET_DATA_HOST || '127.0.0.1', environment, plan,
-    oandaToken: env.OANDA_API_TOKEN, accountId: env.OANDA_ACCOUNT_ID, narwhalKey: env.NARWHAL_API_KEY, finzdataKey: env.FINZDATA_API_KEY };
+    oandaToken: env.OANDA_API_TOKEN, accountId: env.OANDA_ACCOUNT_ID, narwhalKey: env.NARWHAL_API_KEY, finzdataKey: env.FINZDATA_API_KEY,
+    deepseekKey, deepseekBaseUrl, deepseekModel };
 }

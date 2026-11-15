@@ -1,5 +1,6 @@
 <script lang="ts">
   import PineEditor from './PineEditor.svelte';
+  import AiQuant from './AiQuant.svelte';
   import { readLibrary, writeLibrary, type SavedScript } from './pine/library';
 import type { AppTheme } from './chart-theme';
 import appIcon from '../src-tauri/icons/icon.png';
@@ -62,6 +63,7 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
   let appearanceOpen = false;
   let indicatorsOpen = false;
   let pineOpen = false;
+  let aiQuantOpen = false;
   let pinePanelWidth = 50;
   let pineRestoreWidth = 50;
   let pineMaximized = false;
@@ -73,7 +75,9 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     writeLibrary(window.localStorage, scripts);
     pineScripts = scripts;
   }
-  function editPine(script: SavedScript) { pineOpen = true; pineMaximized = false; panelOpen = false; pineEditor.open(script); indicatorsOpen = false; }
+  function editPine(script: SavedScript) { pineOpen = true; pineMaximized = false; panelOpen = false; aiQuantOpen = false; pineEditor.open(script); indicatorsOpen = false; }
+  function inspectPineFromAiQuant(script: SavedScript) { pineOpen = true; pineMaximized = false; panelOpen = false; aiQuantOpen = false; pineEditor?.loadScriptSilently(script); indicatorsOpen = false; }
+  function syncPineFromAiQuant(script: SavedScript) { pineEditor?.loadScriptSilently(script); }
   async function addPine(script: SavedScript) {
     try { await pineEditor.runSaved(script); pineError = ''; }
     catch(error) { pineError = error instanceof Error ? error.message : String(error); }
@@ -931,13 +935,18 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
   }
   function toggleWorkspacePanel() {
     panelOpen = !panelOpen;
+    if (panelOpen) { aiQuantOpen = false; pineOpen = false; pineMaximized = false; }
     try { window.localStorage.setItem(rightPanelKey, panelOpen ? 'open' : 'closed'); } catch { watchlistError = true; }
     if (panelOpen) void refreshWatchlistQuotes();
     else { quoteRequestId++; quoteRefreshPending = false; watchlistQuotesLoading = false; }
   }
   function togglePineEditor() {
     if (pineOpen) { pineOpen = false; pineMaximized = false; return; }
-    pineOpen = true; pineMaximized = false; panelOpen = false;
+    pineOpen = true; pineMaximized = false; panelOpen = false; aiQuantOpen = false;
+  }
+  function toggleAiQuant() {
+    if (aiQuantOpen) { aiQuantOpen = false; return; }
+    aiQuantOpen = true; pineOpen = false; pineMaximized = false; panelOpen = false;
   }
   function togglePineMaximize() {
     if (pineMaximized) { pineMaximized = false; pinePanelWidth = pineRestoreWidth; }
@@ -1104,15 +1113,18 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     {#if pineOpen}<div class="pine-resizer" role="slider" aria-label="Resize chart and Pine Editor" aria-controls="pine-code-editor" aria-orientation="vertical" aria-valuemin="20" aria-valuemax="80" aria-valuenow={Math.round(pinePanelWidth)} aria-valuetext={`${Math.round(pinePanelWidth)}% editor width`} tabindex="0" onpointerdown={startPineResize} onpointermove={movePineResize} onpointerup={endPineResize} onpointercancel={endPineResize} onkeydown={keyPineResize}><span></span></div>{/if}
     <div class="workspace-dock" style:flex={pineOpen ? `${pineMaximized ? 1 : pinePanelWidth} 1 0%` : undefined} use:trackWorkspaceDockWidth>
       {#if vela}<div style:display={pineOpen ? 'contents' : 'none'}><PineEditor chart={vela} scripts={pineScripts} persist={persistPine} onClose={() => { pineOpen = false; pineMaximized = false; }} maximized={pineMaximized} onMaximize={togglePineMaximize} bind:this={pineEditor}/></div>{/if}
-      {#if panelOpen && !pineOpen}
+      <div style:display={aiQuantOpen && !pineOpen ? 'contents' : 'none'}>
+        <AiQuant chart={vela} activeSymbol={symbol} activeTimeframe={timeframe} scripts={pineScripts} persistScripts={persistPine} onInspectInPineEditor={inspectPineFromAiQuant} onSyncPineEditor={syncPineFromAiQuant} onClose={() => { aiQuantOpen = false; }}/>
+      </div>
+      {#if panelOpen && !pineOpen && !aiQuantOpen}
         <Watchlist items={watchlist} collection={watchlists} quotes={watchlistQuotes} {symbol} provider={venueId} loading={watchlistQuotesLoading} storageError={watchlistError} select={selectInstrument} add={() => searchOpen = true} remove={removeFromWatchlist} reorder={saveWatchlist} switchList={switchWatchlist} createList={createWatchlist} renameList={renameWatchlist} deleteList={deleteWatchlist} refresh={() => void refreshWatchlistQuotes()}/>
       {/if}
       <nav class="workspace-rail" aria-label="Workspace panels">
-        <button class:rail-active={panelOpen} aria-label={panelOpen ? 'Close watchlist panel' : 'Open watchlist panel'} title="Watchlist" aria-pressed={panelOpen} onclick={() => { pineOpen = false; toggleWorkspacePanel(); }}><Bookmark size={18}/></button>
+        <button class:rail-active={panelOpen} aria-label={panelOpen ? 'Close watchlist panel' : 'Open watchlist panel'} title="Watchlist" aria-pressed={panelOpen} onclick={() => { pineOpen = false; aiQuantOpen = false; toggleWorkspacePanel(); }}><Bookmark size={18}/></button>
         <button class="rail-placeholder" type="button" aria-label="Alerts (coming soon)" title="Alerts (coming soon)" onclick={() => openPlaceholderTool('Alerts')}><History size={18}/></button>
         <button class="rail-placeholder" type="button" aria-label="Object tree (coming soon)" title="Object tree (coming soon)" onclick={() => openPlaceholderTool('Object tree')}><Layers size={18}/></button>
         <span class="rail-group-gap" aria-hidden="true"></span>
-        <button class="rail-placeholder" type="button" aria-label="Hotlists (coming soon)" title="Hotlists (coming soon)" onclick={() => openPlaceholderTool('Hotlists')}><Sparkles size={18}/></button>
+        <button class:rail-active={aiQuantOpen} type="button" aria-label={aiQuantOpen ? 'Close AI Quant' : 'Open AI Quant'} title="AI Quant" aria-pressed={aiQuantOpen} onclick={toggleAiQuant}><Sparkles size={18}/></button>
         <button class="rail-placeholder" type="button" aria-label="Screeners (coming soon)" title="Screeners (coming soon)" onclick={() => openPlaceholderTool('Screeners')}><Target size={18}/></button>
         <button class:rail-active={pineOpen} type="button" aria-label={pineOpen ? 'Close Pine Editor' : 'Open Pine Editor'} title="Pine Editor" aria-pressed={pineOpen} onclick={togglePineEditor}><Mountain size={18}/></button>
         <button class="rail-placeholder" type="button" aria-label="Calendar (coming soon)" title="Calendar (coming soon)" onclick={() => openPlaceholderTool('Calendar')}><CalendarDays size={18}/></button>

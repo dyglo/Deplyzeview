@@ -105,8 +105,41 @@ class PricingStreams {
   close() { for (const feed of this.feeds.values()) feed.controller.abort(); }
 }
 
+function readBodyJson(request, maxBytes = 25 * 1024 * 1024) {
+  return new Promise((resolveBody, rejectBody) => {
+    const chunks = [];
+    let total = 0;
+    request.on('data', chunk => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        request.destroy();
+        rejectBody(new DataError(413, 'payload_too_large', 'Request payload exceeds maximum size limit'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      try {
+        const raw = Buffer.concat(chunks).toString('utf8');
+        resolveBody(raw ? JSON.parse(raw) : {});
+      } catch {
+        rejectBody(new DataError(400, 'invalid_json', 'Invalid JSON request body'));
+      }
+    });
+    request.on('error', () => rejectBody(new DataError(400, 'read_error', 'Failed to read request body')));
+  });
+}
+
+function redactSecret(text, secret) {
+  let out = String(text ?? '');
+  if (secret && secret.trim()) {
+    out = out.split(secret.trim()).join('[REDACTED]');
+  }
+  return out.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]');
+}
+
 export function createGateway(config, providers = new Providers(config), log = console.log) {
-  const streams = new PricingStreams(providers), clients = new Map();
+  const streams = new PricingStreams(providers), clients = new Map(), aiControllers = new Map();
   const server = http.createServer(async (request, response) => {
     const requestId = randomUUID(); const start = Date.now();
     response.setHeader('X-Request-Id', requestId);
@@ -120,9 +153,186 @@ export function createGateway(config, providers = new Providers(config), log = c
       const count = usage?.minute === minute ? usage.count + 1 : 1;
       clients.set(key, { minute, count });
       if (count > 120) fail(429, 'client_rate_limit', 'Application request limit exceeded');
-      if (request.method !== 'GET') fail(405, 'method_not_allowed', 'Only market-data GET requests are available');
       const url = new URL(request.url, 'http://gateway');
-      if (url.pathname === '/v1/health') return json(200, { providers: config.enabled.map(provider => ({ provider, ...(providers.health[provider] || { status: 'not_checked' }) })) });
+
+      // AI Quant Gateway Endpoints (DeepSeek)
+      if (url.pathname === '/v1/ai-quant/status' && request.method === 'GET') {
+        const configured = Boolean(config.deepseekKey);
+        return json(200, {
+          configured,
+          model: config.deepseekModel || 'deepseek-flash',
+          baseUrl: config.deepseekBaseUrl || 'https://api.deepseek.com',
+          ...(configured ? {} : { error: 'DEEPSEEK_API_KEY is not configured on the Render gateway.' }),
+        });
+      }
+
+      if (url.pathname === '/v1/ai-quant/cancel' && request.method === 'POST') {
+        const body = await readBodyJson(request, 64 * 1024);
+        const targetId = String(body.requestId || '');
+        const ctrl = aiControllers.get(targetId);
+        if (ctrl) {
+          ctrl.abort();
+          aiControllers.delete(targetId);
+          return json(200, { cancelled: true });
+        }
+        return json(200, { cancelled: false });
+      }
+
+      if (url.pathname === '/v1/ai-quant/chat' && request.method === 'POST') {
+        if (!config.deepseekKey) {
+          fail(503, 'ai_quant_unconfigured', 'DeepSeek API key is not configured on the gateway server');
+        }
+        const body = await readBodyJson(request);
+        const clientReqId = String(body.requestId || requestId);
+        const messages = body.messages;
+        if (!Array.isArray(messages) || messages.length === 0) {
+          fail(400, 'invalid_messages', 'Request must contain at least one message');
+        }
+        const temperature = typeof body.temperature === 'number' ? body.temperature : 0.2;
+        const tools = Array.isArray(body.tools) && body.tools.length > 0 ? body.tools : undefined;
+        const baseUrl = (config.deepseekBaseUrl || 'https://api.deepseek.com').replace(/\/+$/, '');
+        const model = config.deepseekModel || 'deepseek-flash';
+        const endpoint = `${baseUrl}/chat/completions`;
+        const wantStream = body.stream !== false;
+        const payload = {
+          model,
+          messages,
+          stream: wantStream,
+          thinking: { type: 'disabled' },
+          max_tokens: 8192,
+          temperature,
+          ...(tools ? { tools } : {}),
+        };
+
+        const controller = new AbortController();
+        aiControllers.set(clientReqId, controller);
+        request.on('close', () => {
+          if (!response.writableEnded) controller.abort();
+          aiControllers.delete(clientReqId);
+        });
+
+        const upstreamFetcher = providers.fetcher || globalThis.fetch;
+        let upstream = null;
+        for (let attempt = 0; attempt <= 2; attempt++) {
+          upstream = await upstreamFetcher(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': wantStream ? 'text/event-stream' : 'application/json',
+              'Accept-Encoding': 'identity',
+              'Connection': 'keep-alive',
+              'Authorization': `Bearer ${config.deepseekKey}`,
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(240_000)]),
+            redirect: 'error',
+          });
+          if ([429, 502, 503, 504].includes(upstream.status) && attempt < 2 && !controller.signal.aborted) {
+            await sleep(350 * (attempt + 1));
+            continue;
+          }
+          break;
+        }
+
+        if (!upstream.ok) {
+          const errText = await upstream.text().catch(() => '');
+          aiControllers.delete(clientReqId);
+          let errMsg = `DeepSeek API returned HTTP ${upstream.status}`;
+          try {
+            const parsed = JSON.parse(errText);
+            if (parsed?.error?.message) errMsg = parsed.error.message;
+          } catch { /* ignore */ }
+          fail(upstream.status, 'deepseek_upstream_error', redactSecret(errMsg, config.deepseekKey));
+        }
+
+        if (!wantStream) {
+          const jsonBody = await upstream.json();
+          aiControllers.delete(clientReqId);
+          return json(200, jsonBody);
+        }
+
+        response.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+
+        const reader = upstream.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullContent = '';
+        let sawDone = false;
+
+        try {
+          if (reader) {
+            streamLoop: while (!controller.signal.aborted) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              let newlineIdx;
+              while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+                const line = buffer.slice(0, newlineIdx).trim();
+                buffer = buffer.slice(newlineIdx + 1);
+                if (!line) continue;
+                if (line.startsWith('data:')) {
+                  const dataStr = line.slice(5).trim();
+                  if (dataStr === '[DONE]') {
+                    sawDone = true;
+                    response.write('data: [DONE]\n\n');
+                    break streamLoop;
+                  }
+                  try {
+                    const frame = JSON.parse(dataStr);
+                    const deltaContent = frame?.choices?.[0]?.delta?.content;
+                    if (typeof deltaContent === 'string') fullContent += deltaContent;
+                  } catch { /* ignore */ }
+                }
+                response.write(`${line}\n\n`);
+              }
+            }
+          }
+        } catch (streamErr) {
+          const fenceCount = (fullContent.match(/```/g) || []).length;
+          const hasCompleteCode = sawDone || (fenceCount >= 2 && fullContent.includes('indicator('));
+          if (!hasCompleteCode && !controller.signal.aborted) {
+            const fbRes = await upstreamFetcher(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Accept-Encoding': 'identity',
+                'Authorization': `Bearer ${config.deepseekKey}`,
+              },
+              body: JSON.stringify({ ...payload, stream: false }),
+              signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]),
+              redirect: 'error',
+            }).catch(() => null);
+            if (fbRes && fbRes.ok) {
+              const fbJson = await fbRes.json().catch(() => null);
+              const fbContent = fbJson?.choices?.[0]?.message?.content;
+              if (typeof fbContent === 'string' && fbContent.trim()) {
+                const syntheticChunk = {
+                  choices: [{ index: 0, delta: { content: fbContent }, finish_reason: 'stop' }],
+                };
+                response.write(`data: ${JSON.stringify(syntheticChunk)}\n\ndata: [DONE]\n\n`);
+                sawDone = true;
+              }
+            }
+          }
+        } finally {
+          aiControllers.delete(clientReqId);
+          await reader?.cancel().catch(() => {});
+        }
+        if (!sawDone && !response.writableEnded) {
+          response.write('data: [DONE]\n\n');
+        }
+        response.end();
+        return;
+      }
+
+      if (request.method !== 'GET') fail(405, 'method_not_allowed', 'Only market-data GET requests are available');
+      if (url.pathname === '/v1/health') return json(200, { providers: config.enabled.map(provider => ({ provider, ...(providers.health[provider] || { status: 'not_checked' }) })), aiQuant: Boolean(config.deepseekKey) });
       const match = /^\/v1\/(oanda|narwhal|finzdata)\/(instruments|instrument|contracts|bars|quote|stream)$/.exec(url.pathname);
       if (!match) fail(404, 'not_found', 'Unknown market-data endpoint');
       const [, provider, action] = match;
