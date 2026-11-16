@@ -1,4 +1,5 @@
 import type { AiQuantImageAttachment } from './image-validation';
+import { listPineReferences } from './reference-library';
 
 export const DEEPSEEK_MODEL_ID = 'deepseek-flash';
 export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
@@ -19,9 +20,20 @@ export interface DeepSeekImagePart {
 
 export type DeepSeekContentPart = DeepSeekTextPart | DeepSeekImagePart;
 
+export interface DeepSeekToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface DeepSeekMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string | DeepSeekContentPart[];
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | DeepSeekContentPart[] | null;
+  tool_calls?: DeepSeekToolCall[];
+  tool_call_id?: string;
 }
 
 export interface AiQuantStatusResponse {
@@ -47,6 +59,7 @@ export interface StreamCompletionOptions {
   maxTokens?: number;
   tools?: unknown[];
   onDelta?: (deltaText: string, accumulatedText: string) => void;
+  onToolCalls?: (toolCalls: DeepSeekToolCall[]) => void;
   signal?: AbortSignal;
 }
 
@@ -56,7 +69,54 @@ export interface AiQuantTransport {
   cancelCompletion(requestId: string): Promise<void>;
 }
 
+export const AI_QUANT_REFERENCE_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'search_pine_references',
+      description:
+        'Search the curated DeplyzeView Pine Script reference library of verified institutional indicators by keyword or category. Call this only when the user request relates to an indicator archetype that may exist in the library.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description:
+              'Keywords describing the indicator to search for (e.g. "smc order blocks", "market structure bos choch", "support resistance zones", "supply demand", "channel", "ema regime", "macd", "volume profile").',
+          },
+          category: {
+            type: 'string',
+            description:
+              'Optional category filter (e.g. "smc", "market-structure", "support-resistance", "supply-demand", "channel", "trend", "oscillator", "volume-profile").',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_pine_reference',
+      description:
+        'Read the full verified Pine Script source code and architectural notes of a specific reference indicator from the DeplyzeView library by its id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description:
+              'The reference indicator ID (e.g. "smc-structure-order-blocks", "market-structure", "tf-sr-zones", "supply-and-demand-visible-range", "auto-channel-detector", "ema-regime", "macd", "volume-profile-fixed-range").',
+          },
+        },
+        required: ['id'],
+      },
+    },
+  },
+];
+
 export const AI_QUANT_TOOLS = [
+  ...AI_QUANT_REFERENCE_TOOLS,
   {
     type: 'function',
     function: {
@@ -92,6 +152,20 @@ export const AI_QUANT_TOOLS = [
   },
 ];
 
+function buildReferenceIndexPrompt(): string {
+  const refs = listPineReferences();
+  if (refs.length === 0) return '';
+  const catalogLines = refs
+    .map((r) => `   - id: "${r.id}" | ${r.title} [tags: ${r.tags.slice(0, 6).join(', ')}]`)
+    .join('\n');
+  return `
+8. ON-DEMAND CURATED PINE SCRIPT REFERENCE LIBRARY (TOOL USE):
+   - You have access to \`read_pine_reference\` and \`search_pine_references\` tools backed by DeplyzeView's curated library of verified, production-grade Pine Script indicators:
+${catalogLines}
+   - WHEN TO CALL: When building a new indicator (or adding a major new feature) that matches or overlaps with one of the reference indicators above, call \`read_pine_reference\` with the matching \`id\` (or \`search_pine_references\` if unsure) BEFORE writing code so you can study its exact non-repainting structure, object management, and visual styling.
+   - WHEN NOT TO CALL: If the user's request does not match any reference in the library, or is a simple follow-up tweak to an already-loaded indicator, DO NOT call the reference tools—proceed immediately using your own Pine Script expertise.`;
+}
+
 const SYSTEM_PROMPT_BASE = `You are AI Quant, an autonomous institutional Pine Script indicator engineering agent integrated into DeplyzeView.
 Your sole responsibility is to design, implement, refine, and repair complete, production-grade TradingView Pine Script indicators that compile and execute cleanly on the DeplyzeView Pine v5/v6 runtime (@luxalgo/vela-pinets) and automatically install onto the user's active chart.
 
@@ -100,13 +174,14 @@ CRITICAL OPERATING RULES:
 2. NO UNNECESSARY QUESTIONS: When minor implementation details (lookback lengths, colors, thresholds, zone capacities, session hours) are unspecified, choose sensible institutional defaults and build the indicator immediately. Only ask for clarification (using \`CLARIFICATION_REQUIRED: <question>\` without code) if the request is completely unintelligible or contradictory in a way that makes any implementation impossible.
 3. PINE VERSION:
    - Use Pine Script v6 (\`//@version=6\`) by default.
-   - Use Pine Script v5 (\`//@version=5\`) whenever the user explicitly requests v5 or when refining an existing v5 script without a version upgrade request.
+   - Use Pine Script v5 (\`//@version=5\`) whenever the user explicitly requests v5 or when refining/adapting a v5 script without a version upgrade request.
 4. DEPLYZEVIEW PINE RUNTIME COMPATIBILITY (HIGH-ACCURACY FIRST-PASS RULES):
    - Always begin the script with \`//@version=6\` (or \`//@version=5\`) on line 1, followed by \`indicator("Title", shorttitle="...", overlay=true/false, max_boxes_count=500, max_lines_count=500, max_labels_count=500)\`.
-   - Use standard namespaces: \`ta.*\`, \`math.*\`, \`array.*\`, \`box.*\`, \`line.*\`, \`label.*\`, \`table.*\`, \`color.*\`, \`input.*\`, \`str.*\`, \`request.*\`.
-   - DO NOT use custom \`type\` (UDT) declarations, \`method\` blocks, \`map.*\`, \`matrix.*\`, or \`polyline.*\`; use parallel typed arrays (\`array.new_box()\`, \`array.new_float()\`, \`array.new_int()\`, \`array.new_bool()\`, \`array.new_label()\`, \`array.new_line()\`) which execute with 100% reliability in the runtime.
-   - IMPORTANT FOR LOOP SAFETY: In Pine Script, \`for i = 0 to array.size(arr) - 1\` will execute or fail if \`array.size(arr) == 0\`. ALWAYS guard array loops with \`if array.size(arr) > 0\` before iterating, or iterate backwards safely only inside \`if array.size(arr) > 0\`.
-   - Always use explicit typed inputs (\`input.int\`, \`input.float\`, \`input.bool\`, \`input.color\`, \`input.string\`) and \`color.new(baseColor, transp)\` (never deprecated \`transp=\`).
+   - Keep generated indicators clean and concise (typically 90–180 lines) so they stream fast and never hit token limits on follow-up refinements.
+   - Use standard namespaces: \`ta.*\`, \`math.*\`, \`array.*\`, \`box.*\`, \`line.*\`, \`linefill.*\`, \`label.*\`, \`table.*\`, \`color.*\`, \`input.*\`, \`str.*\`, \`request.*\`.
+   - Prefer parallel typed arrays (\`array.new_box()\`, \`array.new_float()\`, \`array.new_int()\`, \`array.new_bool()\`, \`array.new_label()\`, \`array.new_line()\`) over verbose \`type\`/\`method\` UDT boilerplate so scripts stay compact and execute with 100% reliability in the runtime.
+   - IMPORTANT FOR LOOP SAFETY: In Pine Script, \`for i = 0 to array.size(arr) - 1\` will fail if \`array.size(arr) == 0\`. ALWAYS guard array loops with \`if array.size(arr) > 0\` before iterating.
+   - Always use explicit typed inputs (\`input.int\`, \`input.float\`, \`input.bool\`, \`input.color\`, \`input.string\`, \`input.timeframe\`, \`input.source\`) and \`color.new(baseColor, transp)\` (never deprecated \`transp=\` or untyped \`input()\`).
    - Do not use \`strategy()\` or \`library()\`; always generate an \`indicator()\`.
    - Ensure every indicator produces visible chart output (plots, boxes, lines, labels, histograms, barcolors, or tables) on normal price action and exposes clean \`input.*\` settings for user customization.
    - Avoid future-bar lookahead or repainting logic on historical bars; rely on confirmed pivots, confirmed bar closes, or causal calculations.
@@ -117,7 +192,7 @@ CRITICAL OPERATING RULES:
    - Translate observable visual elements into coherent Pine Script calculations and drawings (\`box.new\`, \`line.new\`, \`label.new\`, \`plot\`, \`plotshape\`, \`fill\`, \`bgcolor\`).
 7. OUTPUT FORMAT:
    - Provide a brief 1-2 sentence completion summary suitable for the user (e.g., "Your Institutional Supply & Demand indicator has been created, validated and added to your chart."), followed by the complete Pine Script enclosed in a single \`\`\`pine ... \`\`\` code block.
-   - Never output partial snippets, placeholders like \`// ... existing code ...\`, or truncated scripts. Always output the FULL runnable Pine Script.`;
+   - Never output partial snippets, placeholders like \`// ... existing code ...\`, or truncated scripts. Always output the FULL runnable Pine Script.${buildReferenceIndexPrompt()}`;
 
 export function detectRequestedPineVersion(
   promptText: string,
@@ -567,7 +642,16 @@ export function createDefaultAiQuantTransport(fetchImpl: typeof fetch = fetch): 
     },
 
     async streamCompletion(options: StreamCompletionOptions): Promise<string> {
-      const { requestId, messages, temperature = 0.2, maxTokens = 8192, tools, onDelta, signal } = options;
+      const {
+        requestId,
+        messages,
+        temperature = 0.2,
+        maxTokens = 8192,
+        tools,
+        onDelta,
+        onToolCalls,
+        signal,
+      } = options;
 
       if (isTauriRuntime()) {
         const [{ invoke }, { listen }] = await Promise.all([
@@ -606,6 +690,14 @@ export function createDefaultAiQuantTransport(fetchImpl: typeof fetch = fetch): 
               temperature,
             },
           );
+          if (
+            typeof finalResult === 'object' &&
+            finalResult !== null &&
+            Array.isArray(finalResult.toolCalls) &&
+            finalResult.toolCalls.length > 0
+          ) {
+            onToolCalls?.(finalResult.toolCalls as DeepSeekToolCall[]);
+          }
           const finalContent =
             typeof finalResult === 'string'
               ? finalResult
@@ -657,6 +749,7 @@ export function createDefaultAiQuantTransport(fetchImpl: typeof fetch = fetch): 
       const decoder = new TextDecoder();
       let buffer = '';
       let accumulated = '';
+      let collectedToolCalls: DeepSeekToolCall[] = [];
 
       try {
         while (true) {
@@ -679,7 +772,18 @@ export function createDefaultAiQuantTransport(fetchImpl: typeof fetch = fetch): 
               eventType?: string;
               delta?: string;
               content?: string;
+              toolCalls?: DeepSeekToolCall[];
               error?: string;
+              choices?: Array<{
+                delta?: {
+                  content?: string;
+                  tool_calls?: Array<{
+                    index?: number;
+                    id?: string;
+                    function?: { name?: string; arguments?: string };
+                  }>;
+                };
+              }>;
             };
             try {
               parsed = JSON.parse(dataStr);
@@ -695,13 +799,47 @@ export function createDefaultAiQuantTransport(fetchImpl: typeof fetch = fetch): 
               accumulated += parsed.delta;
               onDelta?.(parsed.delta, stripDeepSeekSafetyTags(accumulated));
             }
-            if (kind === 'done' && typeof parsed.content === 'string' && !accumulated) {
-              accumulated = parsed.content;
+            if (kind === 'done') {
+              if (typeof parsed.content === 'string' && !accumulated) {
+                accumulated = parsed.content;
+              }
+              if (Array.isArray(parsed.toolCalls) && parsed.toolCalls.length > 0) {
+                collectedToolCalls = parsed.toolCalls;
+              }
+            }
+            // Also support direct OpenAI-style SSE chunks if gateway streams them directly
+            const choiceDelta = parsed.choices?.[0]?.delta;
+            if (choiceDelta) {
+              if (typeof choiceDelta.content === 'string' && choiceDelta.content.length > 0) {
+                accumulated += choiceDelta.content;
+                onDelta?.(choiceDelta.content, stripDeepSeekSafetyTags(accumulated));
+              }
+              if (Array.isArray(choiceDelta.tool_calls)) {
+                for (const tc of choiceDelta.tool_calls) {
+                  const idx = Number(tc.index ?? 0);
+                  while (collectedToolCalls.length <= idx) {
+                    collectedToolCalls.push({
+                      id: '',
+                      type: 'function',
+                      function: { name: '', arguments: '' },
+                    });
+                  }
+                  if (tc.id) collectedToolCalls[idx].id = tc.id;
+                  if (tc.function?.name) collectedToolCalls[idx].function.name += tc.function.name;
+                  if (tc.function?.arguments) {
+                    collectedToolCalls[idx].function.arguments += tc.function.arguments;
+                  }
+                }
+              }
             }
           }
         }
       } finally {
         reader.releaseLock();
+      }
+
+      if (collectedToolCalls.length > 0) {
+        onToolCalls?.(collectedToolCalls);
       }
 
       return stripDeepSeekSafetyTags(accumulated);

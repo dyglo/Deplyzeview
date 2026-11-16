@@ -80,6 +80,8 @@
   let pendingImageNames: string[] = [];
   let elapsedSeconds = 0;
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+  let planHoldTimer: ReturnType<typeof setTimeout> | null = null;
+  let planStageHoldActive = false;
   let progressEvent: PipelineProgressEvent | null = null;
   let streamingPreview = '';
   let rawStreamBuffer = '';
@@ -91,6 +93,7 @@
   let activeAbortController: AbortController | null = null;
   let fileInput: HTMLInputElement;
   let conversationEl: HTMLDivElement;
+  let liveCardEl: HTMLDivElement;
 
   const starterSuggestions = [
     'Build an institutional supply and demand indicator with confirmed market structure and visibility settings.',
@@ -134,7 +137,7 @@
 
   $: highlightedStream = highlightPineSourceLines(rawStreamBuffer, { maxTailLines: 8 });
   $: highlightedInspect = highlightPineSourceLines(activeWorkingSource);
-  $: isCodeStreaming = highlightedStream.totalLines > 0;
+  $: isCodeStreaming = highlightedStream.totalLines > 0 && !planStageHoldActive;
   $: liveScriptTitle = isCodeStreaming
     ? parseIndicatorNameFromSource(
         rawStreamBuffer,
@@ -155,12 +158,18 @@
           ? 'Applying to chart'
           : isCodeStreaming
             ? 'Building the logic'
-            : 'Thinking';
+            : progressEvent.label.toLowerCase().includes('reference')
+              ? 'Consulting reference library'
+              : 'Thinking';
 
   onDestroy(() => {
     if (elapsedTimer) {
       clearInterval(elapsedTimer);
       elapsedTimer = null;
+    }
+    if (planHoldTimer) {
+      clearTimeout(planHoldTimer);
+      planHoldTimer = null;
     }
   });
 
@@ -226,6 +235,13 @@
     await tick();
     if (conversationEl) {
       conversationEl.scrollTop = conversationEl.scrollHeight;
+    }
+    if (liveCardEl && typeof liveCardEl.scrollIntoView === 'function') {
+      try {
+        liveCardEl.scrollIntoView({ block: 'end' });
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -311,7 +327,6 @@
     const trimmed = rawPrompt.trim();
     if (!trimmed && attachments.length === 0) return;
 
-    await refreshApiStatus();
     if (!activeSession) {
       const fresh = createEmptySession('New Indicator');
       sessions = [fresh];
@@ -337,6 +352,8 @@
     attachments = [];
     attachmentError = '';
     activeTab = 'chat';
+    showHistory = false;
+    showCodeInspect = false;
     busy = true;
     pendingUserPrompt = trimmed || `Attached ${currentImages.length} reference image(s)`;
     pendingImageNames = currentImages.map((i) => i.name);
@@ -345,6 +362,12 @@
     elapsedTimer = setInterval(() => {
       elapsedSeconds += 1;
     }, 1000);
+    planStageHoldActive = true;
+    if (planHoldTimer) clearTimeout(planHoldTimer);
+    planHoldTimer = setTimeout(() => {
+      planStageHoldActive = false;
+      void scrollToBottom();
+    }, 1100);
     streamingPreview = '';
     rawStreamBuffer = '';
     repairEventsLog = [];
@@ -358,6 +381,9 @@
     };
     activeAbortController = new AbortController();
     void scrollToBottom();
+
+    // Refresh API status in the background without blocking the immediate Plan animation
+    void refreshApiStatus();
 
     const requestedVersion: PineVersion | undefined =
       selectedVersionMode === 'v5' ? 5 : selectedVersionMode === 'v6' ? 6 : undefined;
@@ -408,6 +434,7 @@
           rawStreamBuffer = accumulated;
           const lines = accumulated.trim().split(/\r?\n/);
           streamingPreview = lines.slice(-8).join('\n');
+          void scrollToBottom();
         },
         signal: activeAbortController.signal,
       });
@@ -479,6 +506,11 @@
       busy = false;
       pendingUserPrompt = '';
       pendingImageNames = [];
+      planStageHoldActive = false;
+      if (planHoldTimer) {
+        clearTimeout(planHoldTimer);
+        planHoldTimer = null;
+      }
       if (elapsedTimer) {
         clearInterval(elapsedTimer);
         elapsedTimer = null;
@@ -960,7 +992,7 @@
 
       <!-- LuxAlgo-Style Live Thinking & Code Building Animation Card -->
       {#if busy && progressEvent}
-        <div class="aq-live-status aq-lux-card" role="status" aria-live="polite">
+        <div class="aq-live-status aq-lux-card" role="status" aria-live="polite" bind:this={liveCardEl}>
           <!-- Card Header: Breadcrumb (Quant > Plan  OR  Scripts > Name ... N lines) -->
           <div class="aq-lux-card-header">
             <div class="aq-lux-breadcrumb">
@@ -1772,6 +1804,7 @@
   .aq-msg {
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
   }
 
   .aq-msg-user {
@@ -1932,6 +1965,8 @@
     border: 1px solid var(--aq-border);
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
+    min-height: 224px;
     overflow: hidden;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   }
@@ -1948,6 +1983,7 @@
     padding: 9px 12px;
     border-bottom: 1px solid var(--aq-border-subtle);
     background: var(--aq-surface);
+    flex-shrink: 0;
   }
 
   .aq-lux-breadcrumb {
@@ -1994,6 +2030,7 @@
     position: relative;
     background: var(--aq-code-bg);
     min-height: 158px;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -2128,6 +2165,7 @@
     border-top: 1px solid var(--aq-border-subtle);
     background: var(--aq-surface);
     font-size: 11.5px;
+    flex-shrink: 0;
   }
 
   .aq-lux-footer-left {

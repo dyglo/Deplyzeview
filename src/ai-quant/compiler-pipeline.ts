@@ -6,7 +6,9 @@ import { SOURCE_LIMIT } from '../pine/library';
 import type { AiQuantImageAttachment } from './image-validation';
 import {
   type AiQuantTransport,
+  type DeepSeekToolCall,
   type PineVersion,
+  AI_QUANT_REFERENCE_TOOLS,
   buildConciseCompletionMessage,
   buildGenerationMessages,
   buildRepairMessages,
@@ -15,6 +17,7 @@ import {
   parseIndicatorNameFromSource,
   parsePineVersionFromSource,
 } from './deepseek-client';
+import { executeReferenceToolCall } from './reference-library';
 
 export const MAX_REPAIR_ATTEMPTS = 5;
 
@@ -457,6 +460,14 @@ export async function runAutonomousPipeline(
   });
 
   emitProgress(
+    'plan',
+    isRefinement
+      ? `Planning refinement for ${input.existingIndicator?.name || 'indicator'}...`
+      : 'Planning indicator architecture...',
+    0,
+  );
+
+  emitProgress(
     'generate',
     isRefinement
       ? `Updating Pine Script v${targetVersion} indicator...`
@@ -464,16 +475,77 @@ export async function runAutonomousPipeline(
     0,
   );
 
-  let rawGenerationResponse: string;
+  let rawGenerationResponse = '';
   try {
-    const reqId = `gen-${input.indicatorId}-${Date.now()}`;
-    rawGenerationResponse = await input.transport.streamCompletion({
-      requestId: reqId,
-      messages: generationMessages,
-      temperature: 0.2,
-      onDelta: input.onStreamDelta,
-      signal: input.signal,
-    });
+    const maxToolRounds = isRefinement ? 0 : 2;
+    for (let toolRound = 0; toolRound <= maxToolRounds; toolRound++) {
+      let pendingToolCalls: DeepSeekToolCall[] = [];
+      const reqId = `gen-${input.indicatorId}-${toolRound}-${Date.now()}`;
+      const allowTools = !isRefinement && toolRound < maxToolRounds;
+
+      if (toolRound > 0) {
+        emitProgress(
+          'generate',
+          `Generating Pine Script v${targetVersion} indicator...`,
+          0,
+        );
+      }
+
+      rawGenerationResponse = await input.transport.streamCompletion({
+        requestId: reqId,
+        messages: generationMessages,
+        temperature: 0.2,
+        tools: allowTools ? AI_QUANT_REFERENCE_TOOLS : undefined,
+        onDelta: input.onStreamDelta,
+        onToolCalls: (calls) => {
+          pendingToolCalls = calls;
+        },
+        signal: input.signal,
+      });
+
+      const refCalls = pendingToolCalls.filter(
+        (tc) =>
+          tc.function?.name === 'search_pine_references' ||
+          tc.function?.name === 'read_pine_reference',
+      );
+
+      // If no reference tool calls were made (or the model already emitted full Pine code), break and proceed
+      if (refCalls.length === 0 || /\/\/@version\s*=\s*[56]/.test(rawGenerationResponse)) {
+        break;
+      }
+
+      emitProgress(
+        'plan',
+        refCalls.some((c) => c.function.name === 'read_pine_reference')
+          ? 'Reading verified Pine Script reference implementation...'
+          : 'Searching curated Pine Script reference library...',
+        0,
+      );
+
+      const normalizedToolCalls: DeepSeekToolCall[] = refCalls.map((tc, idx) => ({
+        id: tc.id || `call_${toolRound}_${idx}`,
+        type: 'function',
+        function: {
+          name: tc.function.name,
+          arguments: tc.function.arguments || '{}',
+        },
+      }));
+
+      generationMessages.push({
+        role: 'assistant',
+        content: rawGenerationResponse || null,
+        tool_calls: normalizedToolCalls,
+      });
+
+      for (const tc of normalizedToolCalls) {
+        const resultJson = executeReferenceToolCall(tc.function.name, tc.function.arguments);
+        generationMessages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: resultJson,
+        });
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     emitProgress('error', message, 0, message);
