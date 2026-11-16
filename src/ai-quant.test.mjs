@@ -91,8 +91,17 @@ async function loadAiQuantModules() {
         const compilerPipeline = await server.ssrLoadModule('/src/ai-quant/compiler-pipeline.ts');
         const store = await server.ssrLoadModule('/src/ai-quant/store.ts');
         const pineHighlight = await server.ssrLoadModule('/src/ai-quant/pine-highlight.ts');
+        const referenceLibrary = await server.ssrLoadModule('/src/ai-quant/reference-library.ts');
         await server.close();
-        return { imageValidation, deepseekClient, compilerPipeline, store, pineHighlight, close: async () => {} };
+        return {
+          imageValidation,
+          deepseekClient,
+          compilerPipeline,
+          store,
+          pineHighlight,
+          referenceLibrary,
+          close: async () => {},
+        };
       } catch (err) {
         await server.close();
         throw err;
@@ -593,7 +602,7 @@ test('15. Live DeepSeek (deepseek-flash) SSE streaming with the full SMC indicat
     async getStatus() {
       return { configured: true, model: cfg.model, baseUrl: cfg.baseUrl };
     },
-    async streamCompletion({ messages, temperature = 0.2, onDelta }) {
+    async streamCompletion({ messages, temperature = 0.2, tools, onDelta, onToolCalls }) {
       const endpoint = `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
       const payload = {
         model: cfg.model,
@@ -602,6 +611,7 @@ test('15. Live DeepSeek (deepseek-flash) SSE streaming with the full SMC indicat
         thinking: { type: 'disabled' },
         max_tokens: 8192,
         temperature,
+        ...(Array.isArray(tools) && tools.length > 0 ? { tools } : {}),
       };
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -622,6 +632,7 @@ test('15. Live DeepSeek (deepseek-flash) SSE streaming with the full SMC indicat
       let buffer = '';
       let fullContent = '';
       let sawDone = false;
+      const toolCalls = [];
 
       try {
         streamLoop: while (true) {
@@ -640,10 +651,22 @@ test('15. Live DeepSeek (deepseek-flash) SSE streaming with the full SMC indicat
             }
             try {
               const frame = JSON.parse(dataStr);
-              const contentDelta = frame?.choices?.[0]?.delta?.content || '';
+              const delta = frame?.choices?.[0]?.delta;
+              const contentDelta = delta?.content || '';
               if (contentDelta) {
                 fullContent += contentDelta;
                 onDelta?.(contentDelta, deepseekClient.stripDeepSeekSafetyTags(fullContent));
+              }
+              if (Array.isArray(delta?.tool_calls)) {
+                for (const tc of delta.tool_calls) {
+                  const idx = Number(tc.index ?? 0);
+                  while (toolCalls.length <= idx) {
+                    toolCalls.push({ id: '', type: 'function', function: { name: '', arguments: '' } });
+                  }
+                  if (tc.id) toolCalls[idx].id = tc.id;
+                  if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+                  if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+                }
               }
             } catch {
               /* ignore */
@@ -670,6 +693,9 @@ test('15. Live DeepSeek (deepseek-flash) SSE streaming with the full SMC indicat
         }
       } finally {
         reader.releaseLock();
+      }
+      if (toolCalls.length > 0) {
+        onToolCalls?.(toolCalls);
       }
       return deepseekClient.stripDeepSeekSafetyTags(fullContent);
     },
@@ -724,4 +750,118 @@ test('15. Live DeepSeek (deepseek-flash) SSE streaming with the full SMC indicat
   assert.equal(refineResult.updatedExistingInstance, true, 'Follow-up must update existing chart instance in-place');
   assert.equal(chart.indicators().length, 1, 'Chart must still have exactly 1 indicator instance');
   assert.match(refineResult.source, /ta\.ema/i, 'Refined SMC indicator must include EMA logic');
+});
+
+test('16. Curated 8 .md Pine Script reference library: parsing, search, read, and 100% PineEngine compile/execution', async () => {
+  const { referenceLibrary, compilerPipeline } = await loadAiQuantModules();
+  const entries = referenceLibrary.getAllPineReferenceEntries();
+  assert.equal(entries.length, 8, 'Expected all 8 curated .md reference indicators');
+
+  const expectedIds = [
+    'auto-channel-detector',
+    'ema-regime',
+    'macd',
+    'market-structure',
+    'smc-structure-order-blocks',
+    'supply-and-demand-visible-range',
+    'tf-sr-zones',
+    'volume-profile-fixed-range',
+  ];
+  assert.deepEqual(
+    entries.map((e) => e.id),
+    expectedIds,
+  );
+
+  // Verify every single curated reference script compiles and executes cleanly in PineEngine
+  for (const entry of entries) {
+    assert.ok(!entry.source.includes('\\='), `Reference ${entry.id} must not contain escaped \\=`);
+    assert.ok(!entry.source.includes('**'), `Reference ${entry.id} must not contain Markdown bold **`);
+    const diag = await compilerPipeline.validateCompileAndExecutePine(entry.source, {
+      instanceId: `ref-verify-${entry.id}`,
+      expectedVersion: entry.pineVersion,
+    });
+    assert.ok(diag.prepared, `Reference ${entry.id} must prepare cleanly`);
+  }
+
+  // Test searchPineReferences and readPineReference
+  const smcMatches = referenceLibrary.searchPineReferences('smart money concepts order blocks bos choch');
+  assert.ok(smcMatches.length >= 1);
+  assert.equal(smcMatches[0].id, 'smc-structure-order-blocks');
+
+  const srMatches = referenceLibrary.searchPineReferences('support and resistance zones flip');
+  assert.equal(srMatches[0].id, 'tf-sr-zones');
+
+  const readMc = referenceLibrary.readPineReference('market-structure');
+  assert.ok(readMc);
+  assert.match(readMc.source, /indicator\("Market Structure"/);
+});
+
+test('17. On-demand reference tool loop in runAutonomousPipeline and follow-up animation safeguards', async () => {
+  const { compilerPipeline, referenceLibrary } = await loadAiQuantModules();
+  const aiQuantSource = await readFile(new URL('./AiQuant.svelte', import.meta.url), 'utf8');
+
+  // Verify follow-up animation CSS & state safeguards in AiQuant.svelte
+  assert.match(
+    aiQuantSource,
+    /\.aq-live-status\.aq-lux-card\s*\{[\s\S]*?flex-shrink:\s*0;/,
+    'Live animation card must have flex-shrink: 0 so follow-up prompts never collapse it in flex column',
+  );
+  assert.match(
+    aiQuantSource,
+    /planStageHoldActive/,
+    'Follow-up prompts must hold the Quant > Plan stage briefly before transitioning to Scripts > Code',
+  );
+
+  const chart = createMockChart();
+  const emaRef = referenceLibrary.readPineReference('ema-regime');
+  assert.ok(emaRef);
+
+  const toolCallsMade = [];
+  let turn = 0;
+
+  const transport = {
+    async getStatus() {
+      return { configured: true, model: 'deepseek-flash', baseUrl: 'https://api.deepseek.com' };
+    },
+    async streamCompletion(opts) {
+      turn += 1;
+      if (turn === 1) {
+        assert.ok(Array.isArray(opts.tools) && opts.tools.length >= 2, 'Reference tools must be provided');
+        const call = {
+          id: 'call_ref_1',
+          type: 'function',
+          function: {
+            name: 'read_pine_reference',
+            arguments: JSON.stringify({ id: 'ema-regime' }),
+          },
+        };
+        toolCallsMade.push(call);
+        opts.onToolCalls?.([call]);
+        return '';
+      }
+      // Verify the tool response with the reference source was appended to messages
+      const toolMsg = opts.messages.find((m) => m.role === 'tool');
+      assert.ok(toolMsg, 'Expected tool response message in second round');
+      assert.match(String(toolMsg.content), /EMA Regime/);
+      return `Your EMA Regime indicator has been created, validated and added to your chart.\n\`\`\`pine\n${emaRef.source}\n\`\`\``;
+    },
+    async cancelCompletion() {},
+  };
+
+  const progressLabels = [];
+  const result = await compilerPipeline.runAutonomousPipeline({
+    indicatorId: 'test-ref-tool-1',
+    prompt: 'Build an EMA Regime indicator with statistical momentum t-test.',
+    chart,
+    transport,
+    onProgress: (ev) => progressLabels.push(ev.label),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(toolCallsMade.length, 1);
+  assert.ok(
+    progressLabels.some((l) => l.toLowerCase().includes('reference')),
+    'Progress should report consulting reference implementation',
+  );
+  assert.equal(result.installedOnChart, true);
 });
