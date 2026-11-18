@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { TradeVenue } from './footprint';
 import { publishFeedHealth, isGatewayVenue } from './footprint';
 import { mergeObservedTradeVolume, shouldApplyTradeAfterSnapshot } from './volume-utils.mjs';
+import { resolveAssetIconDataUri } from './asset-icons';
 
 type Ohlcv = { time: number; open: number; high: number; low: number; close: number; volume?: number };
 type MarketBar = Ohlcv;
@@ -28,6 +29,12 @@ export class RustMarketDataProvider {
   info() {
     const gateway = isGatewayVenue(this.venue);
     return { name: this.venue, displayName: `${this.venue} (Rust ${gateway ? 'gateway' : 'feed'})`, supportedTimeframes: this.venue === 'narwhal' || this.venue === 'finzdata' ? ['1D'] : undefined, capabilities: { enumerate: false, stream: !gateway, symbolInfo: gateway } };
+  }
+
+  resolveSymbolIcon(descriptor: { ticker?: string; symbol?: string; provider?: string } | string) {
+    const ticker = typeof descriptor === 'string' ? descriptor : (descriptor?.ticker ?? descriptor?.symbol ?? '');
+    if (!ticker) return undefined;
+    return resolveAssetIconDataUri(ticker, this.venue);
   }
 
   async getSymbolInfo(ticker: string) {

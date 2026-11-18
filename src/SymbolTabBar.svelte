@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { resolveAssetIconDataUri } from './asset-icons';
+
   type SymbolTab = {
     id: string;
     symbol: string;
@@ -27,8 +29,8 @@
 <nav class="symbol-tab-strip" aria-label="Chart tabs">
   {#each tabs as tab (tab.id)}
     <div class="symbol-tab" class:active={tab.id === activeTabId} title={tab.symbol} aria-current={tab.id === activeTabId ? 'page' : undefined}>
-      {#if tab.icon}
-        <img class="symbol-tab-icon" src={tab.icon} alt="" draggable="false" />
+      {#if tab.icon || tab.symbol}
+        <img class="symbol-tab-icon" src={tab.icon ?? resolveAssetIconDataUri(tab.id || tab.symbol)} alt="" draggable="false" />
       {:else}
         <span class="symbol-tab-icon symbol-tab-fallback" aria-hidden="true">{tab.symbol.slice(0, 1)}</span>
       {/if}
