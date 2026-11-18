@@ -4,6 +4,7 @@
     ListTree, Copy, Trash2, Check, ExternalLink, ArrowUp, ArrowDown, Edit2
   } from 'lucide-svelte';
   import AssetIcon from './AssetIcon.svelte';
+  import { formatDisplaySymbol } from './asset-icons';
   import {
     watchlistCategory, reorderWatchlist, formatWatchlistNumber,
     formatWatchlistPriceParts, type WatchlistItem, type WatchlistCollection
@@ -534,7 +535,7 @@
                 </span>
 
                 <span class="wl-ticker" title={item.symbol}>
-                  {item.symbol}
+                  {formatDisplaySymbol(item.symbol)}
                 </span>
 
                 {#if item.delayMs}
@@ -545,7 +546,7 @@
               <!-- Last Price Column -->
               <span class="wl-col-val wl-price" class:stale={!!snapshot?.error}>
                 {#if priceParts.pip}
-                  <span class="wl-price-main">{priceParts.main}</span><sup class="wl-price-pip">{priceParts.pip}</sup>
+                  <span class="wl-price-main">{priceParts.main}</span><sup class="wl-price-pip {tone(quote?.change)}">{priceParts.pip}</sup>
                 {:else}
                   <span>{priceParts.main}</span>
                 {/if}
@@ -939,27 +940,30 @@
 
   /* Symbol Rows */
   .wl-row {
-    height: 30px;
+    height: 32px;
     position: relative;
-    border-radius: 4px;
-    margin: 1px 4px;
-    transition: background 0.08s, box-shadow 0.08s;
+    border-radius: 0;
+    margin: 0;
+    border-bottom: 1px solid var(--line);
+    transition: background 0.08s;
   }
   .wl-row:hover {
-    background: var(--tone-1e2025, #1e2025);
+    background: var(--tone-1e2025, #181818);
   }
   :global([data-theme="light"]) .wl-row:hover {
     background: #f0f3fa;
   }
   .wl-row.active {
-    background: color-mix(in srgb, var(--accent) 9%, var(--bg));
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-    box-shadow: inset 3px 0 0 var(--accent);
+    background: var(--tone-24262b, #222222);
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    box-shadow: none;
   }
   :global([data-theme="light"]) .wl-row.active {
-    background: rgba(41, 98, 255, 0.08);
-    border: 1px solid rgba(41, 98, 255, 0.28);
-    box-shadow: inset 3px 0 0 #2962ff;
+    background: #f0f3fa;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    box-shadow: none;
   }
   .wl-row.dragging {
     opacity: 0.35;
@@ -976,10 +980,7 @@
     font-size: 12px;
     text-align: left;
     color: inherit;
-    padding: 0 8px 0 8px;
-  }
-  .wl-row.active .wl-select {
-    padding-left: 10px;
+    padding: 0 12px;
   }
 
   /* Symbol Column */

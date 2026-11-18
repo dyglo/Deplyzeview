@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { resolveAssetIconDataUri } from './asset-icons';
+  import { formatDisplaySymbol, resolveAssetIconDataUri } from './asset-icons';
 
   type SymbolTab = {
     id: string;
@@ -34,7 +34,7 @@
       {:else}
         <span class="symbol-tab-icon symbol-tab-fallback" aria-hidden="true">{tab.symbol.slice(0, 1)}</span>
       {/if}
-      <span class="symbol-tab-symbol">{tab.symbol}</span>
+      <span class="symbol-tab-symbol">{formatDisplaySymbol(tab.symbol)}</span>
       <span class="symbol-tab-price">{formatPrice(tab.price)}</span>
       <span class="symbol-tab-change" class:positive={tab.percentChange !== null && tab.percentChange >= 0} class:negative={tab.percentChange !== null && tab.percentChange < 0}>{formatChange(tab.percentChange)}</span>
       <button class="symbol-tab-close" type="button" aria-label={`Close ${tab.symbol} tab`} title="Close tab" onclick={() => console.info('Multi-tab coming soon.')}><span aria-hidden="true">×</span></button>

@@ -14,8 +14,7 @@ import { onMount } from 'svelte';
   import ChartAppearance from './ChartAppearance.svelte';
   import SymbolSearch from './SymbolSearch.svelte';
   import SymbolTabBar from './SymbolTabBar.svelte';
-  import AssetIcon from './AssetIcon.svelte';
-  import { resolveAssetIconDataUri } from './asset-icons';
+  import { formatDescriptiveSymbolTitle, formatDisplaySymbol, formatOrderQuoteParts, resolveAssetIconDataUri } from './asset-icons';
   import Watchlist from './Watchlist.svelte';
   import { readWatchlists, watchlistsKey } from './watchlist';
   import { fetchWatchlistQuote, type WatchlistQuote } from './watchlist-quotes';
@@ -61,6 +60,7 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
   let timeframeMenuAnchor: { cellId: string; top: number; left: number } | null = null;
   let visibleTimeframes: string[] = ['1h'];
   $: visibleTimeframes = timeframeFavorites.includes(timeframe) ? timeframeFavorites : [timeframe, ...timeframeFavorites];
+  $: orderQuoteParts = formatOrderQuoteParts(tabPrice, symbol);
   let chartStyle: ChartStyleId = 'candles';
   let appearanceOpen = false;
   let indicatorsOpen = false;
@@ -197,10 +197,10 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       const config = chart.renderer.getConfig() as ChartConfig;
       config.candles = { ...config.candles, ...defaultCandleColors };
       config.timeScale.timezone = defaultTimezone;
-      config.layout.background = '#101114';
-      config.layout.textColor = '#a3a5ab';
-      config.grid.vertLines.color = '#181a20';
-      config.grid.horzLines.color = '#181a20';
+      config.layout.background = '#000000';
+      config.layout.textColor = '#b8b8b8';
+      config.grid.vertLines.color = '#141414';
+      config.grid.horzLines.color = '#141414';
       config.priceScale.borderColor = 'transparent';
       config.panes.separatorColor = 'transparent';
       return config;
@@ -298,6 +298,11 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       symbol = pieces.length > 1 ? pieces.slice(1).join(':') : pieces[0];
       venue = providerTitle(venueId);
       setTradeVenue(venueId);
+      const activeStatuslineSymbol = cell.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-symbol');
+      if (activeStatuslineSymbol) {
+        activeStatuslineSymbol.textContent = formatDescriptiveSymbolTitle(symbol);
+        requestAnimationFrame(() => { activeStatuslineSymbol.textContent = formatDescriptiveSymbolTitle(symbol); });
+      }
       const interval = cell.timeframe;
       timeframe = interval === '60' ? '1h' : interval === '240' ? '4h' : interval === '1D' || interval === 'D' ? '1D' : `${interval}m`;
       const config = chart.renderer.getConfig() as ChartConfig;
@@ -355,6 +360,12 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       const onStatuslineSymbolKeydown = onStatuslineKeydown(openStatuslineSearch);
       const onStatuslineMetaKeydown = onStatuslineKeydown(openStatuslineTimeframes);
       if (statuslineSymbol) {
+        const syncStatuslineTitle = () => {
+          const sym = String(chart.market.symbol ?? cell.symbol ?? symbol);
+          statuslineSymbol.textContent = formatDescriptiveSymbolTitle(sym);
+        };
+        syncStatuslineTitle();
+        requestAnimationFrame(syncStatuslineTitle);
         statuslineSymbol.setAttribute('role', 'button');
         statuslineSymbol.setAttribute('tabindex', '0');
         statuslineSymbol.setAttribute('aria-label', `Search markets for chart ${id}`);
@@ -371,19 +382,30 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
         statuslineMeta.addEventListener('keydown', onStatuslineMetaKeydown);
       }
       chart.drawings.showToolbar(false);
-      if (!savedWorkspace) chart.renderer.applyConfig(id === 'chartA' && savedLegacy ? savedLegacy.config : defaultConfig(chart));
+      if (!savedWorkspace) {
+        const initialCfg = id === 'chartA' && savedLegacy ? structuredClone(savedLegacy.config as ChartConfig) : defaultConfig(chart);
+        if ((id === 'chartA' && savedLegacy ? savedLegacy.extras.theme : 'dark') === 'dark' && initialCfg.layout?.background?.toLowerCase() === '#101114') {
+          initialCfg.layout = { ...initialCfg.layout, background: '#000000', textColor: '#b8b8b8' };
+        }
+        chart.renderer.applyConfig(initialCfg);
+      }
       else {
         const cfg = chart.renderer.getConfig() as ChartConfig;
         const patch: Partial<ChartConfig> = {};
         if (cfg.candles?.upColor?.toLowerCase() === '#8a746e' && cfg.candles?.downColor?.toLowerCase() === '#c16f61') {
           patch.candles = { ...cfg.candles, ...defaultCandleColors };
         }
-        if ((cellExtrasById[id]?.theme ?? 'dark') === 'dark' && cfg.grid?.vertLines?.color?.toLowerCase() === '#25272d' && cfg.grid?.horzLines?.color?.toLowerCase() === '#25272d') {
-          patch.grid = {
-            ...cfg.grid,
-            vertLines: { ...cfg.grid.vertLines, color: '#181a20' },
-            horzLines: { ...cfg.grid.horzLines, color: '#181a20' },
-          };
+        if ((cellExtrasById[id]?.theme ?? 'dark') === 'dark') {
+          if (cfg.layout?.background?.toLowerCase() === '#101114') {
+            patch.layout = { ...cfg.layout, background: '#000000', textColor: '#b8b8b8' };
+          }
+          if (['#25272d', '#181a20'].includes(cfg.grid?.vertLines?.color?.toLowerCase() ?? '') && ['#25272d', '#181a20'].includes(cfg.grid?.horzLines?.color?.toLowerCase() ?? '')) {
+            patch.grid = {
+              ...cfg.grid,
+              vertLines: { ...cfg.grid.vertLines, color: '#141414' },
+              horzLines: { ...cfg.grid.horzLines, color: '#141414' },
+            };
+          }
         }
         if (Object.keys(patch).length > 0) chart.renderer.applyConfig(patch);
         if (cellExtrasById[id]) applyCellExtras(chart, cellExtrasById[id]);
@@ -433,8 +455,12 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
         tabLiveRevision++;
         tabPrice = bar.close;
       });
-      const offTabLoad = chart.on('load:end', () => { if (chart === mountedWorkspace.chart) void refreshSymbolTabQuote(); });
+      const offTabLoad = chart.on('load:end', () => {
+        if (statuslineSymbol) statuslineSymbol.textContent = formatDescriptiveSymbolTitle(String(chart.market.symbol ?? cell.symbol ?? symbol));
+        if (chart === mountedWorkspace.chart) void refreshSymbolTabQuote();
+      });
       const offMarket = chart.on('market:changed', () => {
+        if (statuslineSymbol) requestAnimationFrame(() => { statuslineSymbol.textContent = formatDescriptiveSymbolTitle(String(chart.market.symbol ?? cell.symbol ?? symbol)); });
         updateDrawingSync();
         if (chart === mountedWorkspace.chart) syncActiveCell();
       });
@@ -1097,8 +1123,9 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     <div class="market-identity">
       <button class="profile-avatar" type="button" aria-label="Profile settings coming soon" title="Profile settings coming soon" onclick={() => console.info('Profile settings coming soon.')}><UserRound size={16}/></button>
       <div class="market-selector">
-        <button class="symbol-button" aria-label="Search markets, current {symbol} from {venue}" onclick={() => openSymbolSearchForCell(workspace?.active.id ?? activeCellId)}><span class="symbol-line"><AssetIcon {symbol} provider={venueId} size={16}/><span>{symbol}</span><Search size={12}/></span><span class="exchange">{venue}</span></button>
+        <button class="symbol-button" aria-label="Search markets, current {symbol} from {venue}" onclick={() => openSymbolSearchForCell(workspace?.active.id ?? activeCellId)}><span class="symbol-line"><span class="symbol-pill-text">{formatDisplaySymbol(symbol)}</span><span class="symbol-pill-badge" aria-hidden="true"><CandlestickChart size={13}/></span></span><span class="exchange">{venue}</span></button>
       </div>
+      <button class="compare-symbol-btn" type="button" aria-label="Compare or add symbol (coming soon)" title="Compare or add symbol" onclick={() => openPlaceholderTool('Compare symbol')}><Plus size={14}/></button>
     </div>
     <div class="top-divider"></div><div class="timeframes" aria-label="Favorite timeframes">{#each visibleTimeframes as interval}<button class:chosen={timeframe === interval} aria-pressed={timeframe === interval} title={`Select ${interval}`} onclick={() => chooseTimeframe(interval)}>{interval}</button>{/each}<div class="timeframe-picker"><button class="more-time timeframe-picker-trigger" type="button" aria-label="Choose timeframe" aria-haspopup="true" aria-expanded={timeframeMenuOpen} title="Choose or favorite timeframes" onclick={() => { timeframeMenuAnchor = null; timeframeMenuOpen = !timeframeMenuOpen; }}><ChevronDown size={11}/></button>{#if timeframeMenuOpen}<div class="timeframe-menu" class:timeframe-menu-cell-anchored={timeframeMenuAnchor !== null} style={`--timeframe-menu-top:${timeframeMenuAnchor?.top ?? 0}px;--timeframe-menu-left:${timeframeMenuAnchor?.left ?? 0}px`} role="group" aria-label="Available timeframes"><div class="timeframe-menu-heading"><strong>Timeframe</strong><small>Choose one or star favorites</small></div>{#each intervals as interval}<div class="timeframe-option"><button class:interval-current={timeframe === interval} class="timeframe-choice" type="button" aria-pressed={timeframe === interval} onclick={() => chooseTimeframe(interval)}><span>{interval}</span>{#if timeframe === interval}<small>Current</small>{/if}</button><button class="timeframe-favorite" class:favorite-active={timeframeFavorites.includes(interval)} type="button" aria-label={timeframeFavorites.includes(interval) ? `Remove ${interval} from favorites` : `Add ${interval} to favorites`} aria-pressed={timeframeFavorites.includes(interval)} title={timeframeFavorites.includes(interval) ? 'Remove favorite' : 'Add favorite'} onclick={(event) => { event.stopPropagation(); toggleTimeframeFavorite(interval); }}><Star size={14} fill={timeframeFavorites.includes(interval) ? 'currentColor' : 'none'}/></button></div>{/each}</div>{/if}</div></div>
     <div class="top-divider"></div><div class="style-picker"><button class="chart-style" aria-label="Chart style" aria-expanded={styleMenuOpen} class:style-selected={chartStyle !== 'candles'} onclick={() => { layoutMenuOpen = false; styleMenuOpen = !styleMenuOpen; }} onkeydown={(e) => { if (e.key === 'Escape') styleMenuOpen = false; }}><CandlestickChart size={14}/><span>{chartStyles.find(style => style.id === chartStyle)?.label}</span><ChevronDown size={10}/></button>{#if styleMenuOpen}<div class="style-menu" role="group" aria-label="Chart styles">{#each chartStyles as style}<button class:menu-selected={chartStyle === style.id} aria-pressed={chartStyle === style.id} onclick={() => chooseStyle(style.id)}><CandlestickChart size={14}/>{style.label}{#if chartStyle === style.id}<span class="new-tag">SELECTED</span>{/if}</button>{/each}<div class="style-menu-note">Appearance controls in Chart settings</div></div>{/if}</div>
@@ -1122,7 +1149,7 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     <div class="top-spacer"></div>{#if chartStyle === 'footprint'}<button class="top-action" onclick={() => { indicatorsOpen = false; appearanceOpen = false; settingsOpen = true; }}><SlidersHorizontal size={13}/> Footprint</button>{/if}<button class="top-action" aria-label="Indicators" aria-expanded={indicatorsOpen} onclick={() => { appearanceOpen = false; settingsOpen = false; styleMenuOpen = false; layoutMenuOpen = false; vela?.renderer.closeDialogs(); indicatorsOpen = !indicatorsOpen; }}><SlidersHorizontal size={13}/> Indicators</button><button class="top-action"><ArrowLeftRight size={13}/> Alert</button><button class="top-action replay-toolbar-button" class:replay-active={replayState.mode !== 'off'} disabled={layoutId !== '1'} title={layoutId === '1' ? 'Bar Replay' : 'Replay is available in single-chart layout only'} onclick={() => replayState.mode === 'off' ? beginReplayPick() : replayState.mode === 'pick' ? replayStop() : replaySelectBar()}><SkipForward size={13}/> Replay</button><button class="top-action"><Eye size={13}/> View as</button><div class="screenshot-picker"><button class="top-icon" aria-label="Chart snapshot" aria-haspopup="menu" aria-expanded={screenshotMenuOpen} title="Chart snapshot" onclick={() => { screenshotError = ''; screenshotMenuOpen = !screenshotMenuOpen; }}><Camera size={14}/></button>{#if screenshotMenuOpen}<div class="screenshot-menu" role="menu" aria-label="Chart snapshot actions"><button role="menuitem" disabled={screenshotBusy} onclick={() => void copyChartImage()}>Copy Image</button><button role="menuitem" disabled={screenshotBusy} onclick={() => void downloadChartImage()}>Download Image</button>{#if screenshotError}<small role="alert">{screenshotError}</small>{/if}</div>{/if}</div><button class="top-icon" aria-label="Chart settings" onclick={() => { indicatorsOpen = false; settingsOpen = false; appearanceOpen = !appearanceOpen; }}><Settings2 size={14}/></button>
   </nav>
   <main class="chart-layout" class:pine-open={pineOpen} class:pine-maximized={pineOpen && pineMaximized}>{#if vela && chartArea}{#key activeCellId}<ToolRail chart={vela} groups={drawingGroups} bind:prefs={extras.drawingTools} onClear={clearAllDrawings} onLockAll={setAllDrawingsLocked} onHideAll={setAllDrawingsHidden} modeOff={null} disabled={appearanceOpen || settingsOpen || indicatorsOpen || searchOpen}/>{/key}{:else}<aside class="drawing-toolbar" aria-label="Drawing tools"></aside>{/if}
-    <section class="chart-area" class:multi-chart={layoutId !== '1'} bind:this={chartArea} role="application" aria-label="Interactive market chart" onpointermove={onReplayPointerMove} onpointerdown={onReplayPointerDown} onpointerup={onReplayPointerUp} onpointercancel={onReplayPointerCancel} onpointerleave={onReplayPointerLeave} style:flex={pineOpen ? `${pineMaximized ? 0 : 100 - pinePanelWidth} 1 0%` : undefined}><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market charts"></div>{#if replayState.mode === 'pick' && replayHoverX !== null}<div class="replay-picker-line" style={`left:${replayHoverX}px`}><span>{replayHoverTime ? new Date(replayHoverTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Drag to select bar'}</span></div><div class="replay-future-dim" style={`left:${replayHoverX}px`}></div>{/if}</div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
+    <section class="chart-area" class:multi-chart={layoutId !== '1'} bind:this={chartArea} role="application" aria-label="Interactive market chart" onpointermove={onReplayPointerMove} onpointerdown={onReplayPointerDown} onpointerup={onReplayPointerUp} onpointercancel={onReplayPointerCancel} onpointerleave={onReplayPointerLeave} style:flex={pineOpen ? `${pineMaximized ? 0 : 100 - pinePanelWidth} 1 0%` : undefined}><div class="chart-plot"><div bind:this={chartHost} class="vela-chart" aria-label="Live DeplyzeView market charts"></div>{#if layoutId === '1'}<div class="tv-order-strip" role="group" aria-label="Quick order buttons (placeholder)"><button type="button" class="tv-order-btn tv-order-sell" title="Sell order ticket coming soon" onclick={() => openPlaceholderTool('Sell order')}><span class="tv-order-price">{orderQuoteParts.sellMain}{#if orderQuoteParts.sellPip}<sup>{orderQuoteParts.sellPip}</sup>{/if}</span><span class="tv-order-side">SELL</span></button><span class="tv-order-spread" aria-label="Spread">{orderQuoteParts.spread}</span><button type="button" class="tv-order-btn tv-order-buy" title="Buy order ticket coming soon" onclick={() => openPlaceholderTool('Buy order')}><span class="tv-order-price">{orderQuoteParts.buyMain}{#if orderQuoteParts.buyPip}<sup>{orderQuoteParts.buyPip}</sup>{/if}</span><span class="tv-order-side">BUY</span></button></div>{/if}{#if replayState.mode === 'pick' && replayHoverX !== null}<div class="replay-picker-line" style={`left:${replayHoverX}px`}><span>{replayHoverTime ? new Date(replayHoverTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Drag to select bar'}</span></div><div class="replay-future-dim" style={`left:${replayHoverX}px`}></div>{/if}</div><div class="chart-bottom-controls"><div class="chart-watermark" aria-label="DeplyzeView"><img src={appIcon} alt="" draggable="false"/><span>DeplyzeView</span></div><button class="reset-chart" aria-label="Fit all" title="Fit all" onclick={() => vela?.setVisibleRangePreset('ALL')}><Undo2 size={14}/></button></div>
       {#if replayState.mode === 'pick'}<div class="replay-pick-panel"><MousePointer2 size={14}/><span>Click a bar to start replay</span><button onclick={replayStop}>Cancel</button></div>{/if}
       {#if replayState.mode === 'replay'}<div class="replay-panel"><button class="replay-select" onclick={replaySelectBar}><MousePointer2 size={14}/> Select bar</button><span class="replay-panel-divider"></span><button class="replay-control" aria-label={replayState.playing ? 'Pause' : 'Play'} onclick={replayToggle}>{#if replayState.playing}<Pause size={14}/>{:else}<Play size={14}/>{/if}</button><button class="replay-control" aria-label="Step" onclick={replayStep}><SkipForward size={14}/></button><div class="replay-speeds">{#each replaySpeedLabels as label, index}<button class:chosen={replayState.speed === index} onclick={() => replaySetSpeed(index)}>{label}</button>{/each}</div><span class="replay-time">{replayCursorTime ? new Date(replayCursorTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</span><span class="replay-panel-divider"></span><button class="replay-exit" onclick={replayStop}><LogOut size={13}/> Exit</button></div>{/if}
       {#if replayNotice}<div class="replay-notice" role="status">{replayNotice}</div>{/if}
