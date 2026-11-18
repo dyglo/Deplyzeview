@@ -3,6 +3,7 @@
     Bookmark, ChevronDown, Plus, X, MoreHorizontal, Search, RefreshCw,
     ListTree, Copy, Trash2, Check, ExternalLink, ArrowUp, ArrowDown, Edit2
   } from 'lucide-svelte';
+  import AssetIcon from './AssetIcon.svelte';
   import {
     watchlistCategory, reorderWatchlist, formatWatchlistNumber,
     formatWatchlistPriceParts, type WatchlistItem, type WatchlistCollection
@@ -529,51 +530,7 @@
               <!-- Symbol & Icon -->
               <span class="wl-symbol-col">
                 <span class="wl-asset-badge" data-category={group.category} data-symbol={item.symbol.toUpperCase()}>
-                  {#if item.symbol.toUpperCase() === 'DXY'}
-                    <span class="badge-text green">$</span>
-                  {:else if item.symbol.toUpperCase() === 'VIX'}
-                    <span class="badge-text green small">VIX</span>
-                  {:else if /XAU|GOLD/.test(item.symbol.toUpperCase())}
-                    <span class="badge-icon gold">
-                      <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M2 11h12l-2 3H4l-2-3zm1-4h10l-1.5 2.5H4.5L3 7zm2-4h6l-1.5 2.5h-3L5 3z"/></svg>
-                    </span>
-                  {:else if /XAG|SILVER/.test(item.symbol.toUpperCase())}
-                    <span class="badge-icon silver">
-                      <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><circle cx="8" cy="8" r="5"/></svg>
-                    </span>
-                  {:else if /OIL|WTI|BRENT|USO|CL/.test(item.symbol.toUpperCase())}
-                    <span class="badge-icon oil">
-                      <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M8 1c0 0-5 6.3-5 9.4 0 2.8 2.2 4.6 5 4.6s5-1.8 5-4.6C13 7.3 8 1 8 1z"/></svg>
-                    </span>
-                  {:else if /EUR/.test(item.symbol.toUpperCase())}
-                    <span class="badge-text euro">€</span>
-                  {:else if /GBP/.test(item.symbol.toUpperCase())}
-                    <span class="badge-text pound">£</span>
-                  {:else if /JPY/.test(item.symbol.toUpperCase())}
-                    <span class="badge-text yen">¥</span>
-                  {:else if /BTC/.test(item.symbol.toUpperCase())}
-                    <span class="badge-text btc">₿</span>
-                  {:else if /ETH/.test(item.symbol.toUpperCase())}
-                    <span class="badge-icon eth">
-                      <svg viewBox="0 0 16 16" width="9" height="9" fill="currentColor"><path d="M8 1L3 8.5 8 11.5 13 8.5 8 1zM3 9.5L8 15l5-5.5-5 2.5-5-2.5z"/></svg>
-                    </span>
-                  {:else if /AAPL/.test(item.symbol.toUpperCase())}
-                    <span class="badge-icon apple">
-                      <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M10.8 7.9c0-1.8 1.5-2.7 1.6-2.7-.9-1.2-2.2-1.4-2.6-1.4-1.2-.1-2.3.7-2.9.7-.6 0-1.5-.7-2.5-.7-1.3 0-2.5.8-3.1 2-1.4 2.3-.3 5.8 1 7.7.7.9 1.4 2 2.4 1.9.9 0 1.3-.6 2.4-.6 1.1 0 1.4.6 2.4.6 1 0 1.7-.9 2.3-1.9.8-1.1 1.1-2.2 1.1-2.3-.1-.1-2.1-.8-2.1-3.3zm-1.8-5c.5-.6.9-1.5.8-2.4-.8 0-1.7.5-2.2 1.2-.5.5-.9 1.4-.8 2.3.9.1 1.7-.5 2.2-1.1z"/></svg>
-                    </span>
-                  {:else if /TSLA/.test(item.symbol.toUpperCase())}
-                    <span class="badge-text tsla">T</span>
-                  {:else if /NFLX/.test(item.symbol.toUpperCase())}
-                    <span class="badge-text nflx">N</span>
-                  {:else if group.category === 'Forex'}
-                    <span class="badge-text fx">FX</span>
-                  {:else if group.category === 'Crypto'}
-                    <span class="badge-text btc">C</span>
-                  {:else if group.category === 'Indices'}
-                    <span class="badge-text green small">IDX</span>
-                  {:else}
-                    <span class="badge-text mono">{item.symbol.slice(0, 2)}</span>
-                  {/if}
+                  <AssetIcon symbol={item.symbol} provider={item.provider} assetClass={item.assetClass} size={18} />
                 </span>
 
                 <span class="wl-ticker" title={item.symbol}>
@@ -1059,16 +1016,13 @@
     width: 18px;
     height: 18px;
     flex: none;
-    border-radius: 50%;
     display: grid;
     place-items: center;
-    background: var(--tone-292b31, #292b31);
-    color: var(--tone-dadbe0, #dadbe0);
-    overflow: hidden;
+    background: transparent;
+    overflow: visible;
   }
   :global([data-theme="light"]) .wl-asset-badge {
-    background: #e9ecf2;
-    color: #131722;
+    background: transparent;
   }
   .badge-text {
     font-size: 10px;
