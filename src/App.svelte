@@ -276,8 +276,23 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       } finally { drawingSyncBusy = false; }
     }
     reconcileDrawingsSync = () => {
-      if (drawingsSync && workspace) workspace.sync.set('drawings', false);
+      if (!workspace) return;
+      workspace.sync.set('timeframe', false);
+      if (drawingsSync) workspace.sync.set('drawings', false);
     };
+    function formatCellSymbolLabel(rawSym: string) {
+      const multi = (mountedWorkspace.layout?.cells?.length ?? 1) > 1;
+      return multi ? formatDisplaySymbol(rawSym) : formatDescriptiveSymbolTitle(rawSym);
+    }
+    function syncAllCellStatuslineSymbols() {
+      for (const item of mountedWorkspace.cells()) {
+        const el = item.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-symbol');
+        if (!el) continue;
+        const rawSym = String(item.chart.market.symbol ?? item.symbol ?? symbol);
+        const desired = formatCellSymbolLabel(rawSym);
+        if (el.textContent !== desired) el.textContent = desired;
+      }
+    }
     function saveCellState(id: string, chart: Vela, current: ChartExtras) {
       cellExtrasById[id] = structuredClone(current);
       try { window.localStorage.setItem(cellExtrasKey, JSON.stringify(cellExtrasById)); } catch { persistenceError = true; }
@@ -298,12 +313,7 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       symbol = pieces.length > 1 ? pieces.slice(1).join(':') : pieces[0];
       venue = providerTitle(venueId);
       setTradeVenue(venueId);
-      const activeStatuslineSymbol = cell.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-symbol');
-      if (activeStatuslineSymbol) {
-        activeStatuslineSymbol.textContent = formatDescriptiveSymbolTitle(symbol);
-        requestAnimationFrame(() => { activeStatuslineSymbol.textContent = formatDescriptiveSymbolTitle(symbol); });
-      }
-      const interval = cell.timeframe;
+      const interval = String(chart.market.timeframe || cell.timeframe || '60');
       timeframe = interval === '60' ? '1h' : interval === '240' ? '4h' : interval === '1D' || interval === 'D' ? '1D' : `${interval}m`;
       const config = chart.renderer.getConfig() as ChartConfig;
       appearance = config;
@@ -342,27 +352,34 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       const chart = cell.chart;
       const statuslineSymbol = cell.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-symbol');
       const statuslineMeta = cell.host.querySelector<HTMLElement>('.vela-statusline .vela-sl-meta');
-      const openStatuslineSearch = () => openSymbolSearchForCell(id);
-      const openStatuslineTimeframes = () => {
+      const openStatuslineSearch = (event?: Event) => {
+        event?.stopPropagation();
+        openSymbolSearchForCell(id);
+      };
+      const openStatuslineTimeframes = (event?: Event) => {
+        event?.stopPropagation();
         const anchor = timeframeMenuPosition(id);
         if (!anchor) return;
         const shouldClose = timeframeMenuOpen && timeframeMenuAnchor?.cellId === id;
         cell.focus();
         styleMenuOpen = false;
+        layoutMenuOpen = false;
         if (shouldClose) { timeframeMenuOpen = false; timeframeMenuAnchor = null; return; }
-        setTimeout(() => { timeframeMenuAnchor = anchor; timeframeMenuOpen = true; }, 0);
+        timeframeMenuAnchor = anchor;
+        timeframeMenuOpen = true;
       };
-      const onStatuslineKeydown = (action: () => void) => (event: KeyboardEvent) => {
+      const onStatuslineKeydown = (action: (event?: Event) => void) => (event: KeyboardEvent) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
-        action();
+        action(event);
       };
       const onStatuslineSymbolKeydown = onStatuslineKeydown(openStatuslineSearch);
       const onStatuslineMetaKeydown = onStatuslineKeydown(openStatuslineTimeframes);
       if (statuslineSymbol) {
         const syncStatuslineTitle = () => {
           const sym = String(chart.market.symbol ?? cell.symbol ?? symbol);
-          statuslineSymbol.textContent = formatDescriptiveSymbolTitle(sym);
+          const desired = formatCellSymbolLabel(sym);
+          if (statuslineSymbol.textContent !== desired) statuslineSymbol.textContent = desired;
         };
         syncStatuslineTitle();
         requestAnimationFrame(syncStatuslineTitle);
@@ -456,11 +473,11 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
         tabPrice = bar.close;
       });
       const offTabLoad = chart.on('load:end', () => {
-        if (statuslineSymbol) statuslineSymbol.textContent = formatDescriptiveSymbolTitle(String(chart.market.symbol ?? cell.symbol ?? symbol));
+        syncAllCellStatuslineSymbols();
         if (chart === mountedWorkspace.chart) void refreshSymbolTabQuote();
       });
       const offMarket = chart.on('market:changed', () => {
-        if (statuslineSymbol) requestAnimationFrame(() => { statuslineSymbol.textContent = formatDescriptiveSymbolTitle(String(chart.market.symbol ?? cell.symbol ?? symbol)); });
+        requestAnimationFrame(syncAllCellStatuslineSymbols);
         updateDrawingSync();
         if (chart === mountedWorkspace.chart) syncActiveCell();
       });
@@ -493,14 +510,16 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       });
     }
     for (const cell of mountedWorkspace.cells()) attachCell(cell.id);
+    mountedWorkspace.sync.set('timeframe', false);
     syncActiveCell();
+    syncAllCellStatuslineSymbols();
     symbolSync = !!mountedWorkspace.sync.get('symbol');
     crosshairSync = !!mountedWorkspace.sync.get('crosshair');
     reconcileDrawingsSync();
     const offActive = mountedWorkspace.on('cell:active', syncActiveCell);
-    const offCreated = mountedWorkspace.on('cell:created', ({ id }) => { attachCell(id); updateDrawingSync(); });
+    const offCreated = mountedWorkspace.on('cell:created', ({ id }) => { attachCell(id); updateDrawingSync(); requestAnimationFrame(syncAllCellStatuslineSymbols); });
     const offDestroyed = mountedWorkspace.on('cell:destroyed', ({ id }) => { cellDisposers.get(id)?.(); cellDisposers.delete(id); updateDrawingSync(); });
-    const offLayout = mountedWorkspace.on('layout:changed', ({ layout }) => { layoutId = layout; syncActiveCell(); });
+    const offLayout = mountedWorkspace.on('layout:changed', ({ layout }) => { layoutId = layout; syncActiveCell(); syncAllCellStatuslineSymbols(); requestAnimationFrame(syncAllCellStatuslineSymbols); });
     const flushPreferences = () => {
       for (const [id, timer] of saveCellTimer) { clearTimeout(timer); const cell = mountedWorkspace.cell(id); if (cell) saveCellState(id, cell.chart, cellExtrasById[id] ?? extras); }
       saveAppearance();
@@ -609,15 +628,24 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
     searchOpen = true;
   }
   function closeSymbolSearch() { searchOpen = false; searchTargetCellId = ''; }
+  function timeframeLabelForCell(cellId?: string | null) {
+    const target = cellId ? workspace?.cell(cellId) : workspace?.active;
+    const raw = String(target?.chart.market.timeframe || target?.timeframe || '');
+    if (!raw) return timeframe;
+    return raw === '60' ? '1h' : raw === '240' ? '4h' : raw === '1D' || raw === 'D' ? '1D' : `${raw}m`;
+  }
   let timeframeChangeRevision = 0;
   async function chooseTimeframe(value: string) {
     const revision = ++timeframeChangeRevision;
-    const cell = workspace?.active;
+    const targetCellId = timeframeMenuAnchor?.cellId ?? workspace?.active.id ?? activeCellId;
+    const cell = workspace?.cell(targetCellId) ?? workspace?.active;
     const chart = cell?.chart;
     const nextTimeframe = timeframeCode(value);
     const rendererCoords = (chart?.renderer as unknown as { coords?: { width?: number; getViewport?: () => { barSpacing: number; rightOffset: number }; setViewport?: (v: { barSpacing: number; rightOffset: number }) => void } } | undefined)?.coords;
     const previousViewport = rendererCoords?.getViewport?.();
     const preservedBarSpacing = sanitizeBarSpacing(previousViewport?.barSpacing, rendererCoords?.width ?? chartHost?.clientWidth);
+    workspace?.sync.set('timeframe', false);
+    cell?.focus();
     timeframe = value;
     if (!timeframeFavorites.includes(value)) {
       timeframeFavorites = [...timeframeFavorites, value];
@@ -744,11 +772,11 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
   }
   function setSymbolSync(enabled: boolean) {
     symbolSync = enabled;
-    workspace?.sync.set('symbol', enabled ? Object.fromEntries(cellIds.map(id => [id, 'linked'])) : false);
+    workspace?.sync.set('symbol', enabled);
   }
   function setCrosshairSync(enabled: boolean) {
     crosshairSync = enabled;
-    workspace?.sync.set('crosshair', enabled ? Object.fromEntries(cellIds.map(id => [id, 'linked'])) : false);
+    workspace?.sync.set('crosshair', enabled);
   }
   function updateDrawingSync() {
     reconcileDrawingsSync();
@@ -1127,7 +1155,7 @@ import { type Vela, type ChartConfig } from '@luxalgo/vela';
       </div>
       <button class="compare-symbol-btn" type="button" aria-label="Compare or add symbol (coming soon)" title="Compare or add symbol" onclick={() => openPlaceholderTool('Compare symbol')}><Plus size={14}/></button>
     </div>
-    <div class="top-divider"></div><div class="timeframes" aria-label="Favorite timeframes">{#each visibleTimeframes as interval}<button class:chosen={timeframe === interval} aria-pressed={timeframe === interval} title={`Select ${interval}`} onclick={() => chooseTimeframe(interval)}>{interval}</button>{/each}<div class="timeframe-picker"><button class="more-time timeframe-picker-trigger" type="button" aria-label="Choose timeframe" aria-haspopup="true" aria-expanded={timeframeMenuOpen} title="Choose or favorite timeframes" onclick={() => { timeframeMenuAnchor = null; timeframeMenuOpen = !timeframeMenuOpen; }}><ChevronDown size={11}/></button>{#if timeframeMenuOpen}<div class="timeframe-menu" class:timeframe-menu-cell-anchored={timeframeMenuAnchor !== null} style={`--timeframe-menu-top:${timeframeMenuAnchor?.top ?? 0}px;--timeframe-menu-left:${timeframeMenuAnchor?.left ?? 0}px`} role="group" aria-label="Available timeframes"><div class="timeframe-menu-heading"><strong>Timeframe</strong><small>Choose one or star favorites</small></div>{#each intervals as interval}<div class="timeframe-option"><button class:interval-current={timeframe === interval} class="timeframe-choice" type="button" aria-pressed={timeframe === interval} onclick={() => chooseTimeframe(interval)}><span>{interval}</span>{#if timeframe === interval}<small>Current</small>{/if}</button><button class="timeframe-favorite" class:favorite-active={timeframeFavorites.includes(interval)} type="button" aria-label={timeframeFavorites.includes(interval) ? `Remove ${interval} from favorites` : `Add ${interval} to favorites`} aria-pressed={timeframeFavorites.includes(interval)} title={timeframeFavorites.includes(interval) ? 'Remove favorite' : 'Add favorite'} onclick={(event) => { event.stopPropagation(); toggleTimeframeFavorite(interval); }}><Star size={14} fill={timeframeFavorites.includes(interval) ? 'currentColor' : 'none'}/></button></div>{/each}</div>{/if}</div></div>
+    <div class="top-divider"></div><div class="timeframes" aria-label="Favorite timeframes">{#each visibleTimeframes as interval}<button class:chosen={timeframe === interval} aria-pressed={timeframe === interval} title={`Select ${interval}`} onclick={() => chooseTimeframe(interval)}>{interval}</button>{/each}<div class="timeframe-picker"><button class="more-time timeframe-picker-trigger" type="button" aria-label="Choose timeframe" aria-haspopup="true" aria-expanded={timeframeMenuOpen} title="Choose or favorite timeframes" onclick={() => { timeframeMenuAnchor = null; timeframeMenuOpen = !timeframeMenuOpen; }}><ChevronDown size={11}/></button>{#if timeframeMenuOpen}{@const menuCurrentTimeframe = timeframeLabelForCell(timeframeMenuAnchor?.cellId)}<div class="timeframe-menu" class:timeframe-menu-cell-anchored={timeframeMenuAnchor !== null} style={`--timeframe-menu-top:${timeframeMenuAnchor?.top ?? 0}px;--timeframe-menu-left:${timeframeMenuAnchor?.left ?? 0}px`} role="group" aria-label="Available timeframes"><div class="timeframe-menu-heading"><strong>Timeframe</strong><small>Choose one or star favorites</small></div>{#each intervals as interval}<div class="timeframe-option"><button class:interval-current={menuCurrentTimeframe === interval} class="timeframe-choice" type="button" aria-pressed={menuCurrentTimeframe === interval} onclick={() => chooseTimeframe(interval)}><span>{interval}</span>{#if menuCurrentTimeframe === interval}<small>Current</small>{/if}</button><button class="timeframe-favorite" class:favorite-active={timeframeFavorites.includes(interval)} type="button" aria-label={timeframeFavorites.includes(interval) ? `Remove ${interval} from favorites` : `Add ${interval} to favorites`} aria-pressed={timeframeFavorites.includes(interval)} title={timeframeFavorites.includes(interval) ? 'Remove favorite' : 'Add favorite'} onclick={(event) => { event.stopPropagation(); toggleTimeframeFavorite(interval); }}><Star size={14} fill={timeframeFavorites.includes(interval) ? 'currentColor' : 'none'}/></button></div>{/each}</div>{/if}</div></div>
     <div class="top-divider"></div><div class="style-picker"><button class="chart-style" aria-label="Chart style" aria-expanded={styleMenuOpen} class:style-selected={chartStyle !== 'candles'} onclick={() => { layoutMenuOpen = false; styleMenuOpen = !styleMenuOpen; }} onkeydown={(e) => { if (e.key === 'Escape') styleMenuOpen = false; }}><CandlestickChart size={14}/><span>{chartStyles.find(style => style.id === chartStyle)?.label}</span><ChevronDown size={10}/></button>{#if styleMenuOpen}<div class="style-menu" role="group" aria-label="Chart styles">{#each chartStyles as style}<button class:menu-selected={chartStyle === style.id} aria-pressed={chartStyle === style.id} onclick={() => chooseStyle(style.id)}><CandlestickChart size={14}/>{style.label}{#if chartStyle === style.id}<span class="new-tag">SELECTED</span>{/if}</button>{/each}<div class="style-menu-note">Appearance controls in Chart settings</div></div>{/if}</div>
     <div class="top-divider"></div><div class="multi-chart-controls" aria-label="Multi-chart controls"><div class="layout-picker">
       <button class="layout-trigger" type="button" aria-label={`Chart layout: ${workspaceLayouts.find(item => item.id === layoutId)?.label ?? 'Single chart'}`} aria-haspopup="true" aria-expanded={layoutMenuOpen} class:layout-selected={layoutId !== '1'} title={`Chart layout (${workspaceLayouts.find(item => item.id === layoutId)?.label ?? 'Single chart'})`} onclick={() => { styleMenuOpen = false; timeframeMenuOpen = false; layoutMenuOpen = !layoutMenuOpen; }} onkeydown={(e) => { if (e.key === 'Escape') layoutMenuOpen = false; }}>

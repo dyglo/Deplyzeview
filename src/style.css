@@ -278,7 +278,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 .vela-chart .vela-statusline{top:6px}
 .vela-chart .vela-statusline .vela-sl-avatar{width:22px;height:22px}
 .vela-chart .vela-statusline .vela-sl-symbol{font-size:15px;font-weight:600;color:var(--tone-d3d4d8,#e6e6e6)}
-.vela-chart .vela-statusline .vela-sl-meta{font-size:14px;font-weight:500;color:var(--tone-b7b8bd,#cccccc)}
+.vela-chart .vela-statusline .vela-sl-meta{display:inline!important;flex:none;white-space:nowrap;font-size:14px;font-weight:500;color:var(--tone-b7b8bd,#cccccc)}
+.chart-area.multi-chart .vela-statusline .vela-sl-avatar{width:18px;height:18px}
+.chart-area.multi-chart .vela-statusline .vela-sl-symbol{font-size:13px}
+.chart-area.multi-chart .vela-statusline .vela-sl-meta{font-size:12px}
+.vela-ws-grid[data-multi='1'] .vela-cell[data-active='1']::after{border:1.5px solid #2962ff!important}
 .chart-area:not(.multi-chart) .vela-has-statusline [data-vela-legend-at-top]{transform:translateY(72px)!important}
 .chart-area:not(.multi-chart) .vela-has-statusline.vela-sl-stacked-host [data-vela-legend-at-top]{transform:translateY(86px)!important}
 .tv-order-strip{position:absolute;left:10px;top:36px;z-index:6;display:flex;align-items:center;gap:9px;user-select:none}

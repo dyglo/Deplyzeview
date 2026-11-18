@@ -125,4 +125,10 @@ test('topbar gap, layout picker, TradingView dark theme, SELL/BUY strip, and cle
   assert.match(styleCss, /--tone-101114:#000000/);
   assert.doesNotMatch(watchlistSvelte, /inset 3px 0 0/);
   assert.match(dataProvider, /resolveSymbolIcon\(/);
+
+  // 4. Multi-chart independent timeframe switching
+  assert.match(appSvelte, /mountedWorkspace\.sync\.set\('timeframe', false\)/);
+  assert.match(appSvelte, /workspace\.sync\.set\('timeframe', false\)/);
+  assert.match(appSvelte, /const targetCellId = timeframeMenuAnchor\?\.cellId \?\? workspace\?\.active\.id \?\? activeCellId/);
+  assert.match(styleCss, /\.vela-chart \.vela-statusline \.vela-sl-meta\{display:inline!important/);
 });
