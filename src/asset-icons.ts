@@ -284,21 +284,18 @@ function flagInnerSvg(currency: string): string {
 function commodityInnerSvg(code: string): string {
   switch (code) {
     case 'XAU':
-      return `<rect width="24" height="24" fill="#f59e0b"/>`
-        + `<circle cx="12" cy="12" r="10.5" fill="#d97706" opacity="0.35"/>`
-        + `<path d="M5 14.5h6.5l-1.1-3H6.1L5 14.5zm7.5 0H19l-1.1-3h-4.3l-1.1 3zM8.6 10.5h6.8l-1.2-3.2H9.8l-1.2 3.2z" fill="#fffbeb"/>`;
+      return `<rect width="24" height="24" fill="#d69a00"/>`
+        + `<path d="M5.2 16h6.2l-1.1-2.8H6.3L5.2 16zm7.4 0h6.2l-1.1-2.8h-4L12.6 16zM8.8 12h6.4L14 9.2h-4L8.8 12z" fill="#ffffff"/>`;
     case 'XAG':
-      return `<rect width="24" height="24" fill="#64748b"/>`
-        + `<circle cx="12" cy="12" r="10.5" fill="#94a3b8" opacity="0.28"/>`
-        + `<path d="M5 14.5h6.5l-1.1-3H6.1L5 14.5zm7.5 0H19l-1.1-3h-4.3l-1.1 3zM8.6 10.5h6.8l-1.2-3.2H9.8l-1.2 3.2z" fill="#f8fafc"/>`;
+      return `<rect width="24" height="24" fill="#8f96a3"/>`
+        + `<path d="M5.2 16h6.2l-1.1-2.8H6.3L5.2 16zm7.4 0h6.2l-1.1-2.8h-4L12.6 16zM8.8 12h6.4L14 9.2h-4L8.8 12z" fill="#ffffff"/>`;
     case 'XPT':
     case 'XPD':
       return `<rect width="24" height="24" fill="#475569"/>`
-        + `<path d="M5 14.5h6.5l-1.1-3H6.1L5 14.5zm7.5 0H19l-1.1-3h-4.3l-1.1 3zM8.6 10.5h6.8l-1.2-3.2H9.8l-1.2 3.2z" fill="#e2e8f0"/>`;
+        + `<path d="M5.2 16h6.2l-1.1-2.8H6.3L5.2 16zm7.4 0h6.2l-1.1-2.8h-4L12.6 16zM8.8 12h6.4L14 9.2h-4L8.8 12z" fill="#f8fafc"/>`;
     case 'OIL':
-      return `<rect width="24" height="24" fill="#1e293b"/>`
-        + `<path d="M12 4.5C12 4.5 7 10.6 7 14.2A5 5 0 0 0 17 14.2C17 10.6 12 4.5 12 4.5z" fill="#f59e0b"/>`
-        + `<path d="M10.2 14.8a2.2 2.2 0 0 1 1.6-2.1" stroke="#fef3c7" stroke-width="1.3" stroke-linecap="round" fill="none"/>`;
+      return `<rect width="24" height="24" fill="#242730"/>`
+        + `<path d="M12 5C12 5 7.4 10.6 7.4 14A4.6 4.6 0 0 0 16.6 14C16.6 10.6 12 5 12 5z" fill="#ffffff"/>`;
     case 'NG':
       return `<rect width="24" height="24" fill="#0369a1"/>`
         + `<path d="M12.5 4.5c.6 3.1-2.5 4.8-2.5 8a3.8 3.8 0 0 0 7.2 1.6c.7-2.2-.8-4.5-1.7-5.6-.3 1.4-1.3 2.1-1.8 1.5-.6-.8.2-3.1-1.2-5.5z" fill="#38bdf8"/>`
@@ -312,20 +309,18 @@ function commodityInnerSvg(code: string): string {
   }
 }
 
-/** Compose two overlapping circular 24x24 badges in a 24x24 viewBox (base top-left in front, quote bottom-right). */
+/** Compose two overlapping circular 24x24 badges in a 24x24 viewBox (TradingView style: base bottom-left in front, quote top-right behind). */
 function renderDualPairSvg(baseInner: string, quoteInner: string, idPrefix: string): string {
   const baseClip = `${idPrefix}-b`;
   const quoteClip = `${idPrefix}-q`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%">`
     + `<defs>`
-    + `<clipPath id="${quoteClip}"><circle cx="15" cy="15" r="7.5"/></clipPath>`
-    + `<clipPath id="${baseClip}"><circle cx="9" cy="9" r="8"/></clipPath>`
+    + `<clipPath id="${quoteClip}"><circle cx="15" cy="9" r="7.5"/></clipPath>`
+    + `<clipPath id="${baseClip}"><circle cx="9" cy="15" r="7.8"/></clipPath>`
     + `</defs>`
-    + `<g clip-path="url(#${quoteClip})"><g transform="translate(7.5 7.5) scale(0.625)">${quoteInner}</g></g>`
-    + `<circle cx="15" cy="15" r="7.5" fill="none" stroke="#101114" stroke-opacity="0.35" stroke-width="0.8"/>`
-    + `<circle cx="9" cy="9" r="8.8" fill="#101114" fill-opacity="0.55"/>`
-    + `<g clip-path="url(#${baseClip})"><g transform="translate(1 1) scale(0.6667)">${baseInner}</g></g>`
-    + `<circle cx="9" cy="9" r="8" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="0.7"/>`
+    + `<g clip-path="url(#${quoteClip})"><g transform="translate(7.5 1.5) scale(0.625)">${quoteInner}</g></g>`
+    + `<circle cx="9" cy="15" r="8.9" fill="#000000" fill-opacity="0.88"/>`
+    + `<g clip-path="url(#${baseClip})"><g transform="translate(1.2 7.2) scale(0.65)">${baseInner}</g></g>`
     + `</svg>`;
 }
 
@@ -455,9 +450,7 @@ export function resolveAssetIcon(
     if (COMMODITY_PREFIXES[first]) {
       const comm = COMMODITY_PREFIXES[first];
       const quote = CURRENCY_CODES.has(second) ? second : null;
-      const svg = quote
-        ? renderDualPairSvg(commodityInnerSvg(comm.code), flagInnerSvg(quote), `cm-${idSeed}`)
-        : renderSingleCircleSvg(commodityInnerSvg(comm.code), `cm-${idSeed}`);
+      const svg = renderSingleCircleSvg(commodityInnerSvg(comm.code), `cm-${idSeed}`);
       return { kind: 'commodity', symbol: parsed.raw, base: comm.code, quote, label: comm.name, svg, dataUri: svgToDataUri(svg) };
     }
     if (INDEX_MAP[first]) {
@@ -477,7 +470,7 @@ export function resolveAssetIcon(
     const quote = clean.slice(3, 6);
     if (COMMODITY_PREFIXES[base] && CURRENCY_CODES.has(quote)) {
       const comm = COMMODITY_PREFIXES[base];
-      const svg = renderDualPairSvg(commodityInnerSvg(comm.code), flagInnerSvg(quote), `cm-${idSeed}`);
+      const svg = renderSingleCircleSvg(commodityInnerSvg(comm.code), `cm-${idSeed}`);
       return { kind: 'commodity', symbol: parsed.raw, base: comm.code, quote, label: comm.name, svg, dataUri: svgToDataUri(svg) };
     }
     if (CURRENCY_CODES.has(base) && CURRENCY_CODES.has(quote)) {
@@ -507,7 +500,7 @@ export function resolveAssetIcon(
     if (clean.startsWith(prefix) && clean.length === prefix.length + 3) {
       const quote = clean.slice(prefix.length);
       if (CURRENCY_CODES.has(quote)) {
-        const svg = renderDualPairSvg(commodityInnerSvg(comm.code), flagInnerSvg(quote), `cm-${idSeed}`);
+        const svg = renderSingleCircleSvg(commodityInnerSvg(comm.code), `cm-${idSeed}`);
         return { kind: 'commodity', symbol: parsed.raw, base: comm.code, quote, label: comm.name, svg, dataUri: svgToDataUri(svg) };
       }
     }
@@ -545,3 +538,100 @@ export function resolveAssetIcon(
 export function resolveAssetIconDataUri(rawSymbol: string, provider?: string, assetClass?: string): string {
   return resolveAssetIcon(rawSymbol, provider, assetClass).dataUri;
 }
+
+/** Format a symbol in TradingView compact display style (e.g. XAU_USD -> XAUUSD, GBP_USD -> GBPUSD). */
+export function formatDisplaySymbol(rawSymbol: string): string {
+  const trimmed = String(rawSymbol ?? '').trim();
+  const withoutProvider = trimmed.includes(':') ? trimmed.split(':').slice(1).join(':') : trimmed;
+  return withoutProvider.replace(/[_-]/g, '');
+}
+
+const DESCRIPTIVE_TITLES: Record<string, string> = {
+  XAUUSD: 'Gold Spot / U.S. Dollar',
+  XAGUSD: 'Silver Spot / U.S. Dollar',
+  WTICOUSD: 'WTI Crude Oil / U.S. Dollar',
+  BCOUSD: 'Brent Crude Oil / U.S. Dollar',
+  USOIL: 'WTI Crude Oil',
+  UKOIL: 'Brent Crude Oil',
+  EURUSD: 'Euro / U.S. Dollar',
+  GBPUSD: 'British Pound / U.S. Dollar',
+  USDJPY: 'U.S. Dollar / Japanese Yen',
+  USDCHF: 'U.S. Dollar / Swiss Franc',
+  AUDUSD: 'Australian Dollar / U.S. Dollar',
+  USDCAD: 'U.S. Dollar / Canadian Dollar',
+  NZDUSD: 'New Zealand Dollar / U.S. Dollar',
+  EURGBP: 'Euro / British Pound',
+  EURJPY: 'Euro / Japanese Yen',
+  GBPJPY: 'British Pound / Japanese Yen',
+  BTCUSDT: 'Bitcoin / TetherUS',
+  BTCUSD: 'Bitcoin / U.S. Dollar',
+  ETHUSDT: 'Ethereum / TetherUS',
+  ETHUSD: 'Ethereum / U.S. Dollar',
+  SOLUSDT: 'Solana / TetherUS',
+  SOLUSD: 'Solana / U.S. Dollar',
+};
+
+export function formatDescriptiveSymbolTitle(rawSymbol: string): string {
+  const clean = formatDisplaySymbol(rawSymbol).toUpperCase();
+  return DESCRIPTIVE_TITLES[clean] ?? clean;
+}
+
+export type OrderQuoteParts = {
+  sellMain: string;
+  sellPip: string;
+  buyMain: string;
+  buyPip: string;
+  spread: string;
+};
+
+/** Compute TradingView-style Bid (SELL) / Ask (BUY) display parts and spread from a live reference price. */
+export function formatOrderQuoteParts(price: number | null | undefined, rawSymbol: string): OrderQuoteParts {
+  if (price == null || !Number.isFinite(price) || price <= 0) {
+    return { sellMain: '—', sellPip: '', buyMain: '—', buyPip: '', spread: '0.0' };
+  }
+  const clean = formatDisplaySymbol(rawSymbol).toUpperCase();
+  const isGold = /^XAU|GOLD/.test(clean);
+  const isSilver = /^XAG|SILVER/.test(clean);
+  const isJpyFx = /^[A-Z]{3}JPY$/.test(clean);
+  const isStandardFx = !isGold && !isSilver && !isJpyFx && /^[A-Z]{6}$/.test(clean) && !/(USDT|USDC|BUSD|PERP)$/.test(clean);
+
+  if (isGold) {
+    const halfSpread = 0.26;
+    const sell = price - halfSpread;
+    const buy = price + halfSpread;
+    const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return { sellMain: fmt.format(sell), sellPip: '0', buyMain: fmt.format(buy), buyPip: '0', spread: '52.0' };
+  }
+  if (isSilver) {
+    const halfSpread = 0.015;
+    const sell = price - halfSpread;
+    const buy = price + halfSpread;
+    const sFixed = sell.toFixed(4);
+    const bFixed = buy.toFixed(4);
+    return { sellMain: sFixed.slice(0, -1), sellPip: sFixed.slice(-1), buyMain: bFixed.slice(0, -1), buyPip: bFixed.slice(-1), spread: '3.0' };
+  }
+  if (isJpyFx) {
+    const halfSpread = 0.006;
+    const sell = price - halfSpread;
+    const buy = price + halfSpread;
+    const sFixed = sell.toFixed(3);
+    const bFixed = buy.toFixed(3);
+    return { sellMain: sFixed.slice(0, -1), sellPip: sFixed.slice(-1), buyMain: bFixed.slice(0, -1), buyPip: bFixed.slice(-1), spread: '1.2' };
+  }
+  if (isStandardFx) {
+    const halfSpread = 0.00006;
+    const sell = price - halfSpread;
+    const buy = price + halfSpread;
+    const sFixed = sell.toFixed(5);
+    const bFixed = buy.toFixed(5);
+    return { sellMain: sFixed.slice(0, -1), sellPip: sFixed.slice(-1), buyMain: bFixed.slice(0, -1), buyPip: bFixed.slice(-1), spread: '1.2' };
+  }
+  const decimals = price < 1 ? 5 : 2;
+  const tick = 10 ** -decimals;
+  const halfSpread = tick * 2;
+  const sell = price - halfSpread;
+  const buy = price + halfSpread;
+  const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return { sellMain: fmt.format(sell), sellPip: '', buyMain: fmt.format(buy), buyPip: '', spread: (halfSpread * 2 / tick).toFixed(1) };
+}
+

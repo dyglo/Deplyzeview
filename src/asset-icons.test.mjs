@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { resolveAssetIcon, resolveAssetIconDataUri, parseInstrumentSymbol } from './asset-icons.ts';
+import {
+  resolveAssetIcon,
+  resolveAssetIconDataUri,
+  parseInstrumentSymbol,
+  formatDisplaySymbol,
+  formatDescriptiveSymbolTitle,
+  formatOrderQuoteParts,
+} from './asset-icons.ts';
 
 test('normalizes raw symbols across providers and separators', () => {
   const oanda = parseInstrumentSymbol('OANDA:XAU_USD');
@@ -13,6 +20,25 @@ test('normalizes raw symbols across providers and separators', () => {
   const perp = parseInstrumentSymbol('HYPERLIQUID:SOL.P');
   assert.equal(perp.provider, 'hyperliquid');
   assert.equal(perp.clean, 'SOL');
+
+  assert.equal(formatDisplaySymbol('OANDA:XAU_USD'), 'XAUUSD');
+  assert.equal(formatDisplaySymbol('GBP_USD'), 'GBPUSD');
+  assert.equal(formatDescriptiveSymbolTitle('XAU_USD'), 'Gold Spot / U.S. Dollar');
+  assert.equal(formatDescriptiveSymbolTitle('GBP_USD'), 'British Pound / U.S. Dollar');
+});
+
+test('computes TradingView-style SELL / BUY order quote parts and spread', () => {
+  const gold = formatOrderQuoteParts(3783.24, 'XAU_USD');
+  assert.equal(gold.sellMain, '3,782.98');
+  assert.equal(gold.sellPip, '0');
+  assert.equal(gold.buyMain, '3,783.50');
+  assert.equal(gold.buyPip, '0');
+  assert.equal(gold.spread, '52.0');
+
+  const gbp = formatOrderQuoteParts(1.31678, 'GBP_USD');
+  assert.equal(gbp.sellMain, '1.3167');
+  assert.equal(gbp.buyMain, '1.3168');
+  assert.equal(gbp.spread, '1.2');
 });
 
 test('resolves Forex pairs into dual overlapping currency flag SVGs', () => {
@@ -25,12 +51,12 @@ test('resolves Forex pairs into dual overlapping currency flag SVGs', () => {
   }
 });
 
-test('resolves Gold, Silver, and Oil commodities with optional quote currency flag', () => {
+test('resolves Gold, Silver, and Oil commodities into TradingView circular badges', () => {
   const xauUsd = resolveAssetIcon('XAU_USD', 'oanda');
   assert.equal(xauUsd.kind, 'commodity');
   assert.equal(xauUsd.base, 'XAU');
   assert.equal(xauUsd.quote, 'USD');
-  assert.match(xauUsd.svg, /#f59e0b/);
+  assert.match(xauUsd.svg, /#d69a00/);
 
   const xauConcat = resolveAssetIcon('XAUUSD');
   assert.equal(xauConcat.kind, 'commodity');
@@ -74,24 +100,29 @@ test('resolves Crypto tickers and strips quote suffixes', () => {
   assert.match(dataUri, /^data:image\/svg\+xml;utf8,/);
 });
 
-test('topbar gap, layout picker popover theme tokens, and asset icons are wired in CSS and Svelte components', () => {
+test('topbar gap, layout picker, TradingView dark theme, SELL/BUY strip, and clean watchlist are wired', () => {
   const styleCss = fs.readFileSync(new URL('./style.css', import.meta.url), 'utf8');
   const appSvelte = fs.readFileSync(new URL('./App.svelte', import.meta.url), 'utf8');
+  const watchlistSvelte = fs.readFileSync(new URL('./Watchlist.svelte', import.meta.url), 'utf8');
   const dataProvider = fs.readFileSync(new URL('./data-provider.ts', import.meta.url), 'utf8');
 
-  // 1. Topbar-to-chart gap fix: Vela's .vela-widget-topbar and .vela-widget-bottombar are hidden and price pane has no translate offset
+  // 1. Topbar-to-chart gap fix
   assert.match(styleCss, /\.vela-workspace>\.vela-widget-topbar/);
   assert.match(styleCss, /\.vela-workspace>\.vela-widget-bottombar/);
   assert.match(styleCss, /\.chart-area \[data-vela-pane="price"\]\{translate:0 0!important\}/);
 
-  // 2. Layout picker trigger + popover menu uses theme tokens present in light mode
+  // 2. Layout picker trigger + popover menu
   assert.match(appSvelte, /class="layout-trigger"/);
   assert.match(appSvelte, /class="layout-menu"/);
   assert.match(styleCss, /\.layout-trigger\{/);
   assert.match(styleCss, /\.layout-menu\{/);
   assert.doesNotMatch(styleCss, /--tone-17181d/);
 
-  // 3. Asset icons wired into topbar symbol button, data provider statusline resolver, symbol search, and watchlist
-  assert.match(appSvelte, /<AssetIcon \{symbol\} provider=\{venueId\}/);
+  // 3. TradingView topbar pill, SELL / BUY placeholder strip, dark theme, and clean watchlist
+  assert.match(appSvelte, /class="tv-order-strip"/);
+  assert.match(appSvelte, /class="tv-order-btn tv-order-sell"/);
+  assert.match(appSvelte, /class="tv-order-btn tv-order-buy"/);
+  assert.match(styleCss, /--tone-101114:#000000/);
+  assert.doesNotMatch(watchlistSvelte, /inset 3px 0 0/);
   assert.match(dataProvider, /resolveSymbolIcon\(/);
 });
